@@ -9,12 +9,14 @@ import {
   Pressable,
   ActivityIndicator,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { colors, spacing } from "../constants/theme";
 import { runPipelineCycle } from "../lib/pipeline";
 import type { Narrative } from "../lib/types";
 import { useWallet } from "../hooks/useWallet";
 import { NarrativeCard } from "../components/NarrativeCard";
 import { WATCHED_PAIR_ADDRESSES } from "../lib/dexscreener";
+import { hasSeenWelcome } from "../lib/onboarding";
 
 // Poll for new narratives every 90s while the feed is open. Tuned loose
 // to avoid hammering the free-tier APIs — tighten once you've confirmed
@@ -22,6 +24,8 @@ import { WATCHED_PAIR_ADDRESSES } from "../lib/dexscreener";
 const POLL_INTERVAL_MS = 90_000;
 
 export default function HomeScreen() {
+  const router = useRouter();
+  const [checkingOnboarding, setCheckingOnboarding] = useState(true);
   const [narratives, setNarratives] = useState<Narrative[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -29,6 +33,19 @@ export default function HomeScreen() {
   const [lastRun, setLastRun] = useState<number | null>(null);
   const wallet = useWallet();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Redirect to the welcome screen on first-ever launch. Everything below
+  // (data polling, wallet restore) is skipped while this check is pending
+  // so we don't flash the feed before bouncing to welcome.
+  useEffect(() => {
+    hasSeenWelcome().then((seen) => {
+      if (!seen) {
+        router.replace("/welcome");
+      } else {
+        setCheckingOnboarding(false);
+      }
+    });
+  }, [router]);
 
   const runCycle = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) setRefreshing(true);
@@ -55,6 +72,7 @@ export default function HomeScreen() {
   }, [narratives.length]);
 
   useEffect(() => {
+    if (checkingOnboarding) return;
     // Fetch-on-mount + poll pattern. runCycle is async, so its setState
     // calls happen after an await, not synchronously during this effect —
     // safe despite the lint rule's caution here.
@@ -65,7 +83,11 @@ export default function HomeScreen() {
       if (pollRef.current) clearInterval(pollRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [checkingOnboarding]);
+
+  if (checkingOnboarding) {
+    return <View style={[styles.container, { backgroundColor: colors.background }]} />;
+  }
 
   return (
     <SafeAreaView style={styles.container}>
