@@ -4,17 +4,20 @@
   "main": "expo-router/entry",
   "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "start": "expo start",
+    "start": "expo start --dev-client",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "prebuild": "expo prebuild",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "build:dev": "eas build --profile development --platform android",
+    "build:preview": "eas build --profile preview --platform android"
   },
   "dependencies": {
     "expo": "~52.0.0",
     "expo-router": "~4.0.0",
     "expo-status-bar": "~2.0.0",
     "expo-notifications": "~0.29.0",
+    "expo-dev-client": "~5.0.0",
     "react": "18.3.1",
     "react-native": "0.76.3",
     "react-native-safe-area-context": "4.12.0",
