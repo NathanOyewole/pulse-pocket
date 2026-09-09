@@ -19,7 +19,7 @@ const APP_IDENTITY = {
 
 // Use Helius if a key is set, otherwise fall back to public devnet RPC
 // (fine for early testing, will rate-limit under any real load).
-function getConnection(): Connection {
+export function getConnection(): Connection {
   const endpoint = config.heliusApiKey
     ? `https://mainnet.helius-rpc.com/?api-key=${config.heliusApiKey}`
     : clusterApiUrl("devnet");
