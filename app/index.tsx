@@ -55,6 +55,10 @@ export default function HomeScreen() {
   }, [narratives.length]);
 
   useEffect(() => {
+    // Fetch-on-mount + poll pattern. runCycle is async, so its setState
+    // calls happen after an await, not synchronously during this effect —
+    // safe despite the lint rule's caution here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     runCycle();
     pollRef.current = setInterval(() => runCycle(), POLL_INTERVAL_MS);
     return () => {

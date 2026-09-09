@@ -2,7 +2,7 @@ import {
   transact,
   Web3MobileWallet,
 } from "@solana-mobile/mobile-wallet-adapter-protocol-web3js";
-import { VersionedTransaction, PublicKey } from "@solana/web3.js";
+import { VersionedTransaction } from "@solana/web3.js";
 import { getConnection } from "./wallet";
 
 const JUPITER_QUOTE_URL = "https://quote-api.jup.ag/v6/quote";
