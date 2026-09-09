@@ -1,36 +1,87 @@
-import { View, Text, StyleSheet, SafeAreaView } from "react-native";
+import { useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  SafeAreaView,
+  ScrollView,
+  Pressable,
+  ActivityIndicator,
+} from "react-native";
 import { colors, spacing } from "../constants/theme";
+import { runPipelineCycle } from "../lib/pipeline";
+import type { Narrative } from "../lib/types";
+
+// STUB SCREEN — this is a data-layer test harness, not the real feed UI.
+// Once fetch -> detect -> narrate is confirmed working end-to-end (with
+// real API keys and real watched pairs), this gets replaced by the actual
+// swipeable card feed.
 
 export default function HomeScreen() {
+  const [narratives, setNarratives] = useState<Narrative[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleRunCycle() {
+    setLoading(true);
+    setError(null);
+    try {
+      const results = await runPipelineCycle();
+      setNarratives(results);
+      if (results.length === 0) {
+        setError(
+          "Cycle ran, no spikes detected (or WATCHED_PAIR_ADDRESSES is empty — check lib/dexscreener.ts)."
+        );
+      }
+    } catch (err: any) {
+      setError(err?.message ?? String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.inner}>
-        {/* Status indicator */}
+      <ScrollView contentContainerStyle={styles.inner}>
         <View style={styles.statusRow}>
           <View style={styles.liveDot} />
-          <Text style={styles.statusText}>NARRATIVE RADAR</Text>
+          <Text style={styles.statusText}>NARRATIVE RADAR — DATA LAYER TEST</Text>
         </View>
 
-        <Text style={styles.headline}>
-          Attention moves markets.
-        </Text>
-
+        <Text style={styles.headline}>Attention moves markets.</Text>
         <Text style={styles.subhead}>
           Real-time Solana narrative intelligence, in your pocket.
         </Text>
 
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>STATUS</Text>
-          <Text style={styles.cardValue}>Scaffold ready</Text>
-          <Text style={styles.cardMeta}>
-            Day 1 · Expo + Solana Mobile foundation
-          </Text>
-        </View>
+        <Pressable style={styles.button} onPress={handleRunCycle} disabled={loading}>
+          {loading ? (
+            <ActivityIndicator color={colors.background} />
+          ) : (
+            <Text style={styles.buttonText}>Run pipeline cycle</Text>
+          )}
+        </Pressable>
+
+        {error && (
+          <View style={[styles.card, { borderColor: colors.warning }]}>
+            <Text style={styles.cardLabel}>NOTE</Text>
+            <Text style={styles.cardMeta}>{error}</Text>
+          </View>
+        )}
+
+        {narratives.map((n) => (
+          <View key={n.id} style={styles.card}>
+            <Text style={styles.cardLabel}>{n.headline}</Text>
+            <Text style={styles.cardValue}>{n.blurb}</Text>
+            <Text style={styles.cardMeta}>
+              {n.spike.kind} spike · {n.spike.magnitude.toFixed(2)}
+            </Text>
+          </View>
+        ))}
 
         <Text style={styles.footer}>
           Built for CLOCK IN · Solana Mobile Hackathon
         </Text>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -77,13 +128,25 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: spacing.xl,
   },
+  button: {
+    backgroundColor: colors.accent,
+    borderRadius: 10,
+    paddingVertical: spacing.md,
+    alignItems: "center",
+    marginBottom: spacing.lg,
+  },
+  buttonText: {
+    color: colors.background,
+    fontWeight: "700",
+    fontSize: 15,
+  },
   card: {
     backgroundColor: colors.surfaceElevated,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
     padding: spacing.lg,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.md,
   },
   cardLabel: {
     color: colors.text.tertiary,
