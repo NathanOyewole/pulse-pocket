@@ -38,11 +38,11 @@ Dark terminal / ticker aesthetic reused from [usepulse-two.vercel.app](https://u
 ```bash
 git clone https://github.com/NathanOyewole/pulse-pocket.git
 cd pulse-pocket
-npm install
+pnpm install
 
 # Important: use a development build (not Expo Go)
-npx expo prebuild
-npx expo run:android
+pnpm prebuild
+pnpm android
 ```
 
 ## Project Structure
