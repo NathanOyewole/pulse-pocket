@@ -11,16 +11,18 @@ import {
 import { colors, spacing } from "../constants/theme";
 import { runPipelineCycle } from "../lib/pipeline";
 import type { Narrative } from "../lib/types";
+import { useWallet } from "../hooks/useWallet";
 
-// STUB SCREEN — this is a data-layer test harness, not the real feed UI.
-// Once fetch -> detect -> narrate is confirmed working end-to-end (with
-// real API keys and real watched pairs), this gets replaced by the actual
-// swipeable card feed.
+// STUB SCREEN — this is a data-layer + wallet test harness, not the real
+// feed UI. Once both are confirmed working end-to-end on a real device,
+// this gets replaced by the actual swipeable card feed with wallet actions
+// attached to each card.
 
 export default function HomeScreen() {
   const [narratives, setNarratives] = useState<Narrative[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const wallet = useWallet();
 
   async function handleRunCycle() {
     setLoading(true);
@@ -52,6 +54,48 @@ export default function HomeScreen() {
         <Text style={styles.subhead}>
           Real-time Solana narrative intelligence, in your pocket.
         </Text>
+
+        <View style={[styles.card, { marginBottom: spacing.lg }]}>
+          <Text style={styles.cardLabel}>WALLET</Text>
+          {wallet.connected && wallet.pubkey ? (
+            <>
+              <Text style={styles.cardValue}>
+                {wallet.pubkey.slice(0, 4)}...{wallet.pubkey.slice(-4)}
+              </Text>
+              <Text style={styles.cardMeta}>
+                {wallet.balance !== null
+                  ? `${wallet.balance.toFixed(4)} SOL`
+                  : "Balance loading..."}
+              </Text>
+              <Pressable
+                style={[styles.button, { marginTop: spacing.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}
+                onPress={wallet.disconnect}
+                disabled={wallet.loading}
+              >
+                <Text style={[styles.buttonText, { color: colors.text.primary }]}>
+                  Disconnect
+                </Text>
+              </Pressable>
+            </>
+          ) : (
+            <Pressable
+              style={[styles.button, { marginTop: spacing.sm }]}
+              onPress={wallet.connect}
+              disabled={wallet.loading}
+            >
+              {wallet.loading ? (
+                <ActivityIndicator color={colors.background} />
+              ) : (
+                <Text style={styles.buttonText}>Connect Wallet</Text>
+              )}
+            </Pressable>
+          )}
+          {wallet.error && (
+            <Text style={[styles.cardMeta, { color: colors.negative, marginTop: spacing.sm }]}>
+              {wallet.error}
+            </Text>
+          )}
+        </View>
 
         <Pressable style={styles.button} onPress={handleRunCycle} disabled={loading}>
           {loading ? (
