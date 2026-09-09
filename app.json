@@ -34,6 +34,14 @@
           "color": "#00ff9d"
         }
       ]
+      [
+       "expo-build-properties",
+    {
+        "android": {
+          "kotlinVersion": "1.9.25"
+        }
+    }
+  ]
     ],
     "experiments": {
       "typedRoutes": true
