@@ -3,7 +3,9 @@
 export interface TokenPairSnapshot {
   pairAddress: string;
   baseSymbol: string;
+  baseMint: string;
   quoteSymbol: string;
+  quoteMint: string;
   priceUsd: number;
   volumeH1: number;
   volumeH24: number;
