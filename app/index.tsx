@@ -60,7 +60,9 @@ export default function HomeScreen() {
           {wallet.connected && wallet.pubkey ? (
             <>
               <Text style={styles.cardValue}>
-                {wallet.pubkey.slice(0, 4)}...{wallet.pubkey.slice(-4)}
+                {wallet.skrDomain
+                  ? wallet.skrDomain
+                  : `${wallet.pubkey.slice(0, 4)}...${wallet.pubkey.slice(-4)}`}
               </Text>
               <Text style={styles.cardMeta}>
                 {wallet.balance !== null

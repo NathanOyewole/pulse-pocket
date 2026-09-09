@@ -6,6 +6,7 @@ import {
   getBalanceSol,
   type WalletState,
 } from "../lib/wallet";
+import { resolveSkrDomain } from "../lib/skrDomain";
 
 export function useWallet() {
   const [state, setState] = useState<WalletState>({
@@ -14,12 +15,18 @@ export function useWallet() {
     authToken: null,
   });
   const [balance, setBalance] = useState<number | null>(null);
+  const [skrDomain, setSkrDomain] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Try to silently restore a previous session on mount.
   useEffect(() => {
-    restoreWalletSession().then(setState).catch(() => {});
+    restoreWalletSession().then((result) => {
+      setState(result);
+      if (result.pubkey) {
+        resolveSkrDomain(result.pubkey).then(setSkrDomain);
+      }
+    }).catch(() => {});
   }, []);
 
   const connect = useCallback(async () => {
@@ -29,8 +36,12 @@ export function useWallet() {
       const result = await connectWallet();
       setState(result);
       if (result.pubkey) {
-        const bal = await getBalanceSol(result.pubkey);
+        const [bal, domain] = await Promise.all([
+          getBalanceSol(result.pubkey),
+          resolveSkrDomain(result.pubkey),
+        ]);
         setBalance(bal);
+        setSkrDomain(domain);
       }
     } catch (err: any) {
       setError(err?.message ?? String(err));
@@ -45,6 +56,7 @@ export function useWallet() {
       await disconnectWallet();
       setState({ connected: false, pubkey: null, authToken: null });
       setBalance(null);
+      setSkrDomain(null);
     } catch (err: any) {
       setError(err?.message ?? String(err));
     } finally {
@@ -52,5 +64,5 @@ export function useWallet() {
     }
   }, []);
 
-  return { ...state, balance, loading, error, connect, disconnect };
+  return { ...state, balance, skrDomain, loading, error, connect, disconnect };
 }
