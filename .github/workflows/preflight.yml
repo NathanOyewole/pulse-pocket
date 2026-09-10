@@ -1,0 +1,93 @@
+name: Pre-flight checks
+
+# Runs on every push and PR to main. Goal: catch anything that would break
+# the EAS build in under a minute, instead of finding out 5-7 minutes into
+# an actual Gradle build. This does NOT replace running the real build —
+# it's a fast filter that catches the cheap, common failures first.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  validate-json:
+    name: Validate JSON config files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Runs before any install step, on purpose — a broken package.json
+      # (like the bad merge that slipped through once already) fails here
+      # in seconds, before wasting time on a full dependency install.
+      - name: Check package.json, app.json, eas.json, tsconfig.json are valid JSON
+        run: |
+          for f in package.json app.json eas.json tsconfig.json; do
+            if [ -f "$f" ]; then
+              echo "Checking $f..."
+              python3 -c "import json; json.load(open('$f'))" || {
+                echo "::error file=$f::$f is not valid JSON"
+                exit 1
+              }
+            fi
+          done
+
+  type-and-lint:
+    name: TypeScript + ESLint
+    runs-on: ubuntu-latest
+    needs: validate-json
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: pnpm run lint
+
+  expo-config-and-doctor:
+    name: Expo config resolution + doctor
+    runs-on: ubuntu-latest
+    needs: validate-json
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Reproduces the exact command EAS runs during the "Read app config"
+      # build step. Catches things like a config plugin (e.g.
+      # expo-build-properties) being referenced in app.json but missing
+      # from package.json — this exact bug broke a real build once.
+      - name: Verify Expo config resolves
+        run: npx expo config --json --type public > /dev/null
+
+      # This runs with full network access here (unlike a sandboxed dev
+      # environment), so it can actually reach Expo's version registry and
+      # catch dependency versions scoped for the wrong Expo SDK — the
+      # exact failure mode that broke expo-build-properties and
+      # eslint-config-expo earlier in this project.
+      - name: Expo doctor
+        run: npx expo-doctor
