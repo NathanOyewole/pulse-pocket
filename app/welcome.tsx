@@ -2,12 +2,16 @@ import { View, Text, StyleSheet, Image, Pressable, SafeAreaView } from "react-na
 import { useRouter } from "expo-router";
 import { colors, spacing } from "../constants/theme";
 import { markWelcomeSeen } from "../lib/onboarding";
+import { requestNotificationPermission } from "../lib/notifications";
 
 export default function WelcomeScreen() {
   const router = useRouter();
 
   async function handleGetStarted() {
     await markWelcomeSeen();
+    // Fire-and-forget — don't block navigation on the permission dialog,
+    // and don't treat a decline as an error. The feed works fine without it.
+    requestNotificationPermission().catch(() => {});
     router.replace("/");
   }
 
@@ -32,6 +36,10 @@ export default function WelcomeScreen() {
           <PitchLine
             label="ACT"
             text="Connect your wallet and act on a narrative in one tap — no leaving the feed."
+          />
+          <PitchLine
+            label="STAY ALERTED"
+            text="Get notified the moment a high-momentum narrative fires while the app's open."
           />
         </View>
 

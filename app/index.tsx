@@ -17,6 +17,7 @@ import { useWallet } from "../hooks/useWallet";
 import { NarrativeCard } from "../components/NarrativeCard";
 import { WATCHED_PAIR_ADDRESSES } from "../lib/dexscreener";
 import { hasSeenWelcome } from "../lib/onboarding";
+import { notifyNarrative } from "../lib/notifications";
 
 // Poll for new narratives every 90s while the feed is open. Tuned loose
 // to avoid hammering the free-tier APIs — tighten once you've confirmed
@@ -33,6 +34,7 @@ export default function HomeScreen() {
   const [lastRun, setLastRun] = useState<number | null>(null);
   const wallet = useWallet();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isFirstCycleRef = useRef(true);
 
   // Redirect to the welcome screen on first-ever launch. Everything below
   // (data polling, wallet restore) is skipped while this check is pending
@@ -54,6 +56,17 @@ export default function HomeScreen() {
 
     try {
       const results = await runPipelineCycle();
+
+      // Skip notifying on the first cycle after app open — otherwise a
+      // cold start with several pre-existing spikes dumps a burst of
+      // notifications the instant the feed loads.
+      if (!isFirstCycleRef.current) {
+        for (const narrative of results) {
+          notifyNarrative(narrative).catch(() => {});
+        }
+      }
+      isFirstCycleRef.current = false;
+
       setNarratives((prev) => [...results, ...prev].slice(0, 50));
       setLastRun(Date.now());
       if (results.length === 0 && narratives.length === 0) {
