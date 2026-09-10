@@ -8,6 +8,8 @@
     "scheme": "pulsepocket",
     "userInterfaceStyle": "dark",
     "splash": {
+      "image": "./assets/splash-logo.png",
+      "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
     "ios": {
@@ -16,9 +18,13 @@
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
       "package": "com.nathanoyewole.pulsepocket"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
@@ -27,10 +33,26 @@
         {
           "color": "#00ff9d"
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "1.9.25"
+          }
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "78b9c701-60af-40e7-b89c-46233ba3efb9"
+      }
     }
   }
 }

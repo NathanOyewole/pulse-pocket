@@ -1,131 +1,177 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
-  ScrollView,
+  FlatList,
+  RefreshControl,
   Pressable,
   ActivityIndicator,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { colors, spacing } from "../constants/theme";
 import { runPipelineCycle } from "../lib/pipeline";
 import type { Narrative } from "../lib/types";
 import { useWallet } from "../hooks/useWallet";
+import { NarrativeCard } from "../components/NarrativeCard";
+import { WATCHED_PAIR_ADDRESSES } from "../lib/dexscreener";
+import { hasSeenWelcome } from "../lib/onboarding";
+import { notifyNarrative } from "../lib/notifications";
 
-// STUB SCREEN — this is a data-layer + wallet test harness, not the real
-// feed UI. Once both are confirmed working end-to-end on a real device,
-// this gets replaced by the actual swipeable card feed with wallet actions
-// attached to each card.
+// Poll for new narratives every 90s while the feed is open. Tuned loose
+// to avoid hammering the free-tier APIs — tighten once you've confirmed
+// rate limits are comfortable.
+const POLL_INTERVAL_MS = 90_000;
 
 export default function HomeScreen() {
+  const router = useRouter();
+  const [checkingOnboarding, setCheckingOnboarding] = useState(true);
   const [narratives, setNarratives] = useState<Narrative[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastRun, setLastRun] = useState<number | null>(null);
   const wallet = useWallet();
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isFirstCycleRef = useRef(true);
 
-  async function handleRunCycle() {
-    setLoading(true);
+  // Redirect to the welcome screen on first-ever launch. Everything below
+  // (data polling, wallet restore) is skipped while this check is pending
+  // so we don't flash the feed before bouncing to welcome.
+  useEffect(() => {
+    hasSeenWelcome().then((seen) => {
+      if (!seen) {
+        router.replace("/welcome");
+      } else {
+        setCheckingOnboarding(false);
+      }
+    });
+  }, [router]);
+
+  const runCycle = useCallback(async (isManualRefresh = false) => {
+    if (isManualRefresh) setRefreshing(true);
+    else setLoading(true);
     setError(null);
+
     try {
       const results = await runPipelineCycle();
-      setNarratives(results);
-      if (results.length === 0) {
+
+      // Skip notifying on the first cycle after app open — otherwise a
+      // cold start with several pre-existing spikes dumps a burst of
+      // notifications the instant the feed loads.
+      if (!isFirstCycleRef.current) {
+        for (const narrative of results) {
+          notifyNarrative(narrative).catch(() => {});
+        }
+      }
+      isFirstCycleRef.current = false;
+
+      setNarratives((prev) => [...results, ...prev].slice(0, 50));
+      setLastRun(Date.now());
+      if (results.length === 0 && narratives.length === 0) {
         setError(
-          "Cycle ran, no spikes detected (or WATCHED_PAIR_ADDRESSES is empty — check lib/dexscreener.ts)."
+          WATCHED_PAIR_ADDRESSES.length === 0
+            ? "No pairs configured yet — add Solana pair addresses in lib/dexscreener.ts."
+            : "No spikes detected this cycle. Feed updates automatically."
         );
       }
     } catch (err: any) {
       setError(err?.message ?? String(err));
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  }, [narratives.length]);
+
+  useEffect(() => {
+    if (checkingOnboarding) return;
+    // Fetch-on-mount + poll pattern. runCycle is async, so its setState
+    // calls happen after an await, not synchronously during this effect —
+    // safe despite the lint rule's caution here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    runCycle();
+    pollRef.current = setInterval(() => runCycle(), POLL_INTERVAL_MS);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkingOnboarding]);
+
+  if (checkingOnboarding) {
+    return <View style={[styles.container, { backgroundColor: colors.background }]} />;
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.inner}>
-        <View style={styles.statusRow}>
-          <View style={styles.liveDot} />
-          <Text style={styles.statusText}>NARRATIVE RADAR — DATA LAYER TEST</Text>
-        </View>
-
-        <Text style={styles.headline}>Attention moves markets.</Text>
-        <Text style={styles.subhead}>
-          Real-time Solana narrative intelligence, in your pocket.
-        </Text>
-
-        <View style={[styles.card, { marginBottom: spacing.lg }]}>
-          <Text style={styles.cardLabel}>WALLET</Text>
-          {wallet.connected && wallet.pubkey ? (
-            <>
-              <Text style={styles.cardValue}>
-                {wallet.pubkey.slice(0, 4)}...{wallet.pubkey.slice(-4)}
-              </Text>
-              <Text style={styles.cardMeta}>
-                {wallet.balance !== null
-                  ? `${wallet.balance.toFixed(4)} SOL`
-                  : "Balance loading..."}
-              </Text>
-              <Pressable
-                style={[styles.button, { marginTop: spacing.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}
-                onPress={wallet.disconnect}
-                disabled={wallet.loading}
-              >
-                <Text style={[styles.buttonText, { color: colors.text.primary }]}>
-                  Disconnect
-                </Text>
-              </Pressable>
-            </>
-          ) : (
-            <Pressable
-              style={[styles.button, { marginTop: spacing.sm }]}
-              onPress={wallet.connect}
-              disabled={wallet.loading}
-            >
-              {wallet.loading ? (
-                <ActivityIndicator color={colors.background} />
-              ) : (
-                <Text style={styles.buttonText}>Connect Wallet</Text>
-              )}
-            </Pressable>
-          )}
-          {wallet.error && (
-            <Text style={[styles.cardMeta, { color: colors.negative, marginTop: spacing.sm }]}>
-              {wallet.error}
+      <View style={styles.walletBar}>
+        <View style={styles.liveDot} />
+        <Text style={styles.walletBarTitle}>PULSE POCKET</Text>
+        <View style={{ flex: 1 }} />
+        {wallet.connected && wallet.pubkey ? (
+          <Pressable onPress={wallet.disconnect} style={styles.walletPill}>
+            <Text style={styles.walletPillText} numberOfLines={1}>
+              {wallet.skrDomain
+                ? wallet.skrDomain
+                : `${wallet.pubkey.slice(0, 4)}...${wallet.pubkey.slice(-4)}`}
             </Text>
-          )}
-        </View>
-
-        <Pressable style={styles.button} onPress={handleRunCycle} disabled={loading}>
-          {loading ? (
-            <ActivityIndicator color={colors.background} />
-          ) : (
-            <Text style={styles.buttonText}>Run pipeline cycle</Text>
-          )}
-        </Pressable>
-
-        {error && (
-          <View style={[styles.card, { borderColor: colors.warning }]}>
-            <Text style={styles.cardLabel}>NOTE</Text>
-            <Text style={styles.cardMeta}>{error}</Text>
-          </View>
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={wallet.connect}
+            style={styles.walletPill}
+            disabled={wallet.loading}
+          >
+            {wallet.loading ? (
+              <ActivityIndicator size="small" color={colors.accent} />
+            ) : (
+              <Text style={styles.walletPillText}>Connect Wallet</Text>
+            )}
+          </Pressable>
         )}
+      </View>
 
-        {narratives.map((n) => (
-          <View key={n.id} style={styles.card}>
-            <Text style={styles.cardLabel}>{n.headline}</Text>
-            <Text style={styles.cardValue}>{n.blurb}</Text>
-            <Text style={styles.cardMeta}>
-              {n.spike.kind} spike · {n.spike.magnitude.toFixed(2)}
-            </Text>
+      <FlatList
+        data={narratives}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.feedContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => runCycle(true)}
+            tintColor={colors.accent}
+          />
+        }
+        renderItem={({ item }) => (
+          <NarrativeCard
+            narrative={item}
+            walletConnected={wallet.connected}
+            walletPubkey={wallet.pubkey}
+            authToken={wallet.authToken}
+          />
+        )}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            {loading ? (
+              <ActivityIndicator color={colors.accent} />
+            ) : (
+              <>
+                <Text style={styles.emptyTitle}>No narratives yet</Text>
+                <Text style={styles.emptyText}>
+                  {error ?? "Pull down to check for fresh signals."}
+                </Text>
+              </>
+            )}
           </View>
-        ))}
-
-        <Text style={styles.footer}>
-          Built for CLOCK IN · Solana Mobile Hackathon
-        </Text>
-      </ScrollView>
+        }
+        ListFooterComponent={
+          narratives.length > 0 && lastRun ? (
+            <Text style={styles.footerText}>
+              Last updated {new Date(lastRun).toLocaleTimeString()}
+            </Text>
+          ) : null
+        }
+      />
     </SafeAreaView>
   );
 }
@@ -135,82 +181,68 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  inner: {
-    flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    justifyContent: "center",
-  },
-  statusRow: {
+  walletBar: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: spacing.sm,
   },
   liveDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.accent,
-    marginRight: spacing.sm,
   },
-  statusText: {
-    color: colors.accent,
-    fontSize: 11,
-    letterSpacing: 1.5,
-    fontWeight: "600",
-  },
-  headline: {
+  walletBarTitle: {
     color: colors.text.primary,
-    fontSize: 32,
     fontWeight: "700",
-    lineHeight: 40,
-    marginBottom: spacing.md,
+    fontSize: 13,
+    letterSpacing: 0.5,
   },
-  subhead: {
-    color: colors.text.secondary,
-    fontSize: 16,
-    lineHeight: 24,
-    marginBottom: spacing.xl,
-  },
-  button: {
-    backgroundColor: colors.accent,
-    borderRadius: 10,
-    paddingVertical: spacing.md,
-    alignItems: "center",
-    marginBottom: spacing.lg,
-  },
-  buttonText: {
-    color: colors.background,
-    fontWeight: "700",
-    fontSize: 15,
-  },
-  card: {
+  walletPill: {
     backgroundColor: colors.surfaceElevated,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
+    borderRadius: 20,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    maxWidth: 160,
   },
-  cardLabel: {
-    color: colors.text.tertiary,
-    fontSize: 11,
-    letterSpacing: 1.2,
-    marginBottom: spacing.xs,
-  },
-  cardValue: {
-    color: colors.text.primary,
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: spacing.xs,
-  },
-  cardMeta: {
-    color: colors.text.secondary,
-    fontSize: 13,
-  },
-  footer: {
-    color: colors.text.muted,
+  walletPillText: {
+    color: colors.accent,
     fontSize: 12,
+    fontWeight: "600",
+  },
+  feedContent: {
+    padding: spacing.lg,
+    flexGrow: 1,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: spacing.xxl * 2,
+    paddingHorizontal: spacing.xl,
+  },
+  emptyTitle: {
+    color: colors.text.primary,
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: spacing.sm,
+  },
+  emptyText: {
+    color: colors.text.tertiary,
+    fontSize: 13,
     textAlign: "center",
+    lineHeight: 18,
+  },
+  footerText: {
+    color: colors.text.muted,
+    fontSize: 11,
+    textAlign: "center",
+    marginTop: spacing.md,
   },
 });

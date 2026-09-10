@@ -1,0 +1,53 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0a0a0a"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </linearGradient>
+    <linearGradient id="pulseGrad" x1="0" y1="0" x2="1024" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00cc7a"/>
+      <stop offset="50%" stop-color="#00ff9d"/>
+      <stop offset="100%" stop-color="#00cc7a"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+
+  <!-- Subtle grid dots, terminal feel -->
+  <g opacity="0.08">
+    <circle cx="180" cy="180" r="3" fill="#00ff9d"/>
+    <circle cx="844" cy="180" r="3" fill="#00ff9d"/>
+    <circle cx="180" cy="844" r="3" fill="#00ff9d"/>
+    <circle cx="844" cy="844" r="3" fill="#00ff9d"/>
+  </g>
+
+  <!-- Pulse / heartbeat waveform, centered -->
+  <g filter="url(#glow)">
+    <path
+      d="M 140 512
+         L 340 512
+         L 410 340
+         L 490 680
+         L 580 200
+         L 660 780
+         L 730 512
+         L 884 512"
+      fill="none"
+      stroke="url(#pulseGrad)"
+      stroke-width="34"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </g>
+
+  <!-- Small "signal dot" accent at the end of the line, like a live cursor -->
+  <circle cx="884" cy="512" r="22" fill="#00ff9d"/>
+</svg>

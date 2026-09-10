@@ -15,8 +15,8 @@ export const WATCHED_PAIR_ADDRESSES: string[] = [
 
 interface DexScreenerPair {
   pairAddress: string;
-  baseToken: { symbol: string };
-  quoteToken: { symbol: string };
+  baseToken: { symbol: string; address: string };
+  quoteToken: { symbol: string; address: string };
   priceUsd: string;
   volume: { h1: number; h24: number };
   priceChange: { h1: number; h24: number };
@@ -31,7 +31,9 @@ function toSnapshot(pair: DexScreenerPair): TokenPairSnapshot {
   return {
     pairAddress: pair.pairAddress,
     baseSymbol: pair.baseToken.symbol,
+    baseMint: pair.baseToken.address,
     quoteSymbol: pair.quoteToken.symbol,
+    quoteMint: pair.quoteToken.address,
     priceUsd: parseFloat(pair.priceUsd),
     volumeH1: pair.volume?.h1 ?? 0,
     volumeH24: pair.volume?.h24 ?? 0,

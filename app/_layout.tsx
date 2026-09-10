@@ -26,12 +26,13 @@ export default function RootLayout() {
         <Stack.Screen
           name="index"
           options={{
-            title: "PULSE POCKET",
-            headerTitleStyle: {
-              fontSize: 14,
-              letterSpacing: 1.5,
-              fontWeight: "700",
-            },
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="welcome"
+          options={{
+            headerShown: false,
           }}
         />
       </Stack>

@@ -1,0 +1,30 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="pulseGrad" x1="0" y1="0" x2="1024" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00cc7a"/>
+      <stop offset="50%" stop-color="#00ff9d"/>
+      <stop offset="100%" stop-color="#00cc7a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Scaled down + centered so it stays within Android's ~66% safe zone
+       regardless of mask shape (circle, squircle, rounded square, etc.) -->
+  <g transform="translate(512 512) scale(0.62) translate(-512 -512)">
+    <path
+      d="M 140 512
+         L 340 512
+         L 410 340
+         L 490 680
+         L 580 200
+         L 660 780
+         L 730 512
+         L 884 512"
+      fill="none"
+      stroke="url(#pulseGrad)"
+      stroke-width="34"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <circle cx="884" cy="512" r="22" fill="#00ff9d"/>
+  </g>
+</svg>
