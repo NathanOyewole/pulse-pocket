@@ -15,6 +15,7 @@ import { fetchPairSnapshots } from "../../lib/dexscreener";
 import type { TokenPairSnapshot } from "../../lib/types";
 import { useWallet } from "../../hooks/useWallet";
 import { swapSolForToken } from "../../lib/jupiter";
+import { friendlyError } from "../../lib/errors";
 
 const SWAP_AMOUNT_SOL = 0.02;
 
@@ -45,7 +46,18 @@ export default function PairDetailScreen() {
     magnitude?: string;
   }>();
 
-  const address = params.address;
+  const address = Array.isArray(params.address)
+    ? params.address[0]
+    : params.address;
+  const headline = Array.isArray(params.headline)
+    ? params.headline[0]
+    : params.headline;
+  const blurb = Array.isArray(params.blurb) ? params.blurb[0] : params.blurb;
+  const kind = Array.isArray(params.kind) ? params.kind[0] : params.kind;
+  const magnitude = Array.isArray(params.magnitude)
+    ? params.magnitude[0]
+    : params.magnitude;
+
   const wallet = useWallet();
 
   const [snapshot, setSnapshot] = useState<TokenPairSnapshot | null>(null);
@@ -69,8 +81,8 @@ export default function PairDetailScreen() {
       } else {
         setSnapshot(rows[0]);
       }
-    } catch (err: any) {
-      setError(err?.message ?? String(err));
+    } catch (err: unknown) {
+      setError(friendlyError(err));
     } finally {
       setLoading(false);
     }
@@ -93,8 +105,8 @@ export default function PairDetailScreen() {
       );
       setTxSignature(sig);
       setSwapStatus("success");
-    } catch (err: any) {
-      setSwapError(err?.message ?? String(err));
+    } catch (err: unknown) {
+      setSwapError(friendlyError(err));
       setSwapStatus("error");
     }
   }
@@ -123,59 +135,61 @@ export default function PairDetailScreen() {
           <Text style={styles.errorText}>{error}</Text>
         ) : snapshot ? (
           <>
-            {/* Signal from feed (if navigated from a card) */}
-            {(params.headline || params.blurb) && (
+            {(headline || blurb) && (
               <View style={styles.signalCard}>
-                {params.kind ? (
+                {kind ? (
                   <Text style={styles.signalKind}>
-                    {params.kind === "volume" ? "VOLUME SPIKE" : "PRICE MOVE"}
-                    {params.magnitude
-                      ? ` · ${Number(params.magnitude).toFixed(1)}${
-                          params.kind === "volume" ? "x" : "%"
+                    {kind === "volume" ? "VOLUME SPIKE" : "PRICE MOVE"}
+                    {magnitude
+                      ? ` · ${Number(magnitude).toFixed(1)}${
+                          kind === "volume" ? "x" : "%"
                         }`
                       : ""}
                   </Text>
                 ) : null}
-                {params.headline ? (
-                  <Text style={styles.signalHeadline}>{params.headline}</Text>
+                {headline ? (
+                  <Text style={styles.signalHeadline}>{headline}</Text>
                 ) : null}
-                {params.blurb ? (
-                  <Text style={styles.signalBlurb}>{params.blurb}</Text>
+                {blurb ? (
+                  <Text style={styles.signalBlurb}>{blurb}</Text>
                 ) : null}
               </View>
             )}
 
-            {/* Price block */}
             <View style={styles.priceBlock}>
               <Text style={styles.priceLabel}>PRICE USD</Text>
               <Text style={styles.priceValue}>
                 ${formatPrice(snapshot.priceUsd)}
               </Text>
               <View style={styles.pctRow}>
-                <Text style={[styles.pct, { color: pctColor(snapshot.priceChangeH1) }]}>
+                <Text
+                  style={[
+                    styles.pct,
+                    { color: pctColor(snapshot.priceChangeH1) },
+                  ]}
+                >
                   1h {snapshot.priceChangeH1 >= 0 ? "+" : ""}
                   {snapshot.priceChangeH1.toFixed(1)}%
                 </Text>
-                <Text style={[styles.pct, { color: pctColor(snapshot.priceChangeH24) }]}>
+                <Text
+                  style={[
+                    styles.pct,
+                    { color: pctColor(snapshot.priceChangeH24) },
+                  ]}
+                >
                   24h {snapshot.priceChangeH24 >= 0 ? "+" : ""}
                   {snapshot.priceChangeH24.toFixed(1)}%
                 </Text>
               </View>
             </View>
 
-            {/* Stats grid */}
             <View style={styles.grid}>
               <Stat label="LIQUIDITY" value={formatUsd(snapshot.liquidityUsd)} />
               <Stat label="VOL 1H" value={formatUsd(snapshot.volumeH1)} />
               <Stat label="VOL 24H" value={formatUsd(snapshot.volumeH24)} />
-              <Stat
-                label="BASE"
-                value={snapshot.baseSymbol}
-                mono={false}
-              />
+              <Stat label="BASE" value={snapshot.baseSymbol} />
             </View>
 
-            {/* Addresses */}
             <View style={styles.addrBlock}>
               <Text style={styles.addrLabel}>PAIR</Text>
               <Text style={styles.addrValue} selectable>
@@ -189,7 +203,6 @@ export default function PairDetailScreen() {
               </Text>
             </View>
 
-            {/* Chart = DexScreener (no extra deps) */}
             <Pressable
               style={styles.linkButton}
               onPress={() =>
@@ -198,10 +211,11 @@ export default function PairDetailScreen() {
                 )
               }
             >
-              <Text style={styles.linkButtonText}>Open chart on DexScreener</Text>
+              <Text style={styles.linkButtonText}>
+                Open chart on DexScreener
+              </Text>
             </Pressable>
 
-            {/* Swap */}
             {swapStatus === "success" && txSignature ? (
               <View style={[styles.swapButton, styles.swapSuccess]}>
                 <Text style={styles.swapButtonText}>
@@ -243,21 +257,11 @@ export default function PairDetailScreen() {
   );
 }
 
-function Stat({
-  label,
-  value,
-  mono = true,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.statCell}>
       <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, !mono && { fontVariant: undefined }]}>
-        {value}
-      </Text>
+      <Text style={styles.statValue}>{value}</Text>
     </View>
   );
 }
@@ -391,6 +395,7 @@ const styles = StyleSheet.create({
   errorText: {
     color: colors.negative,
     fontSize: 13,
+    lineHeight: 18,
     marginTop: spacing.sm,
   },
   footerHint: {

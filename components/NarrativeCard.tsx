@@ -10,6 +10,7 @@ import { useRouter } from "expo-router";
 import { colors, spacing } from "../constants/theme";
 import type { Narrative } from "../lib/types";
 import { swapSolForToken } from "../lib/jupiter";
+import { friendlyError } from "../lib/errors";
 
 const SWAP_AMOUNT_SOL = 0.02;
 
@@ -37,10 +38,12 @@ export function NarrativeCard({
   const isPositive = spike.kind === "price" ? spike.magnitude > 0 : true;
 
   function openDetail() {
+    const address = spike.pairAddress;
+    if (!address) return;
     router.push({
       pathname: "/pair/[address]",
       params: {
-        address: spike.pairAddress,
+        address,
         headline: narrative.headline,
         blurb: narrative.blurb,
         kind: spike.kind,
@@ -64,66 +67,65 @@ export function NarrativeCard({
       );
       setTxSignature(signature);
       setSwapStatus("success");
-    } catch (err: any) {
-      setSwapError(err?.message ?? String(err));
+    } catch (err: unknown) {
+      setSwapError(friendlyError(err));
       setSwapStatus("error");
     }
   }
 
   return (
-    <View style={styles.card}>
-      <Pressable onPress={openDetail}>
-        <View style={styles.topRow}>
-          <View
+    <Pressable style={styles.card} onPress={openDetail}>
+      <View style={styles.topRow}>
+        <View
+          style={[
+            styles.kindBadge,
+            { borderColor: isPositive ? colors.positive : colors.negative },
+          ]}
+        >
+          <Text
             style={[
-              styles.kindBadge,
-              { borderColor: isPositive ? colors.positive : colors.negative },
+              styles.kindBadgeText,
+              { color: isPositive ? colors.positive : colors.negative },
             ]}
           >
-            <Text
-              style={[
-                styles.kindBadgeText,
-                { color: isPositive ? colors.positive : colors.negative },
-              ]}
-            >
-              {spike.kind === "volume" ? "VOLUME SPIKE" : "PRICE MOVE"}
-            </Text>
-          </View>
-          <Text style={styles.timestamp}>
-            {new Date(narrative.generatedAt).toLocaleTimeString()}
+            {spike.kind === "volume" ? "VOLUME SPIKE" : "PRICE MOVE"}
           </Text>
         </View>
+        <Text style={styles.timestamp}>
+          {new Date(narrative.generatedAt).toLocaleTimeString()}
+        </Text>
+      </View>
 
-        <Text style={styles.headline}>{narrative.headline}</Text>
-        <Text style={styles.blurb}>{narrative.blurb}</Text>
+      <Text style={styles.headline}>{narrative.headline}</Text>
+      <Text style={styles.blurb}>{narrative.blurb}</Text>
 
-        <View style={styles.statsRow}>
-          <View style={styles.stat}>
-            <Text style={styles.statLabel}>PRICE</Text>
-            <Text style={styles.statValue}>
-              ${spike.currentSnapshot.priceUsd.toFixed(6)}
-            </Text>
-          </View>
-          <View style={styles.stat}>
-            <Text style={styles.statLabel}>24H</Text>
-            <Text
-              style={[
-                styles.statValue,
-                {
-                  color:
-                    spike.currentSnapshot.priceChangeH24 >= 0
-                      ? colors.positive
-                      : colors.negative,
-                },
-              ]}
-            >
-              {spike.currentSnapshot.priceChangeH24 >= 0 ? "+" : ""}
-              {spike.currentSnapshot.priceChangeH24.toFixed(1)}%
-            </Text>
-          </View>
+      <View style={styles.statsRow}>
+        <View style={styles.stat}>
+          <Text style={styles.statLabel}>PRICE</Text>
+          <Text style={styles.statValue}>
+            ${spike.currentSnapshot.priceUsd.toFixed(6)}
+          </Text>
         </View>
-        <Text style={styles.tapHint}>Tap for pair details →</Text>
-      </Pressable>
+        <View style={styles.stat}>
+          <Text style={styles.statLabel}>24H</Text>
+          <Text
+            style={[
+              styles.statValue,
+              {
+                color:
+                  spike.currentSnapshot.priceChangeH24 >= 0
+                    ? colors.positive
+                    : colors.negative,
+              },
+            ]}
+          >
+            {spike.currentSnapshot.priceChangeH24 >= 0 ? "+" : ""}
+            {spike.currentSnapshot.priceChangeH24.toFixed(1)}%
+          </Text>
+        </View>
+      </View>
+
+      <Text style={styles.tapHint}>Tap for details</Text>
 
       {swapStatus === "success" && txSignature ? (
         <View style={[styles.swapButton, styles.swapButtonSuccess]}>
@@ -138,7 +140,11 @@ export function NarrativeCard({
             (!walletConnected || swapStatus === "pending") &&
               styles.swapButtonDisabled,
           ]}
-          onPress={handleSwap}
+          onPress={(e) => {
+            // Don’t open detail when tapping swap
+            e?.stopPropagation?.();
+            handleSwap();
+          }}
           disabled={!walletConnected || swapStatus === "pending"}
         >
           {swapStatus === "pending" ? (
@@ -153,10 +159,10 @@ export function NarrativeCard({
         </Pressable>
       )}
 
-      {swapStatus === "error" && swapError && (
+      {swapStatus === "error" && swapError ? (
         <Text style={styles.errorText}>{swapError}</Text>
-      )}
-    </View>
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -245,7 +251,8 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: colors.negative,
-    fontSize: 12,
+    fontSize: 13,
+    lineHeight: 18,
     marginTop: spacing.sm,
   },
 });
