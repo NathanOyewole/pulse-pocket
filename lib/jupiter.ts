@@ -5,10 +5,17 @@ import {
 import { VersionedTransaction } from "@solana/web3.js";
 import { getConnection } from "./wallet";
 
-// Try multiple bases — some networks block one hostname.
+import { config } from "./config";
+
+// lite-api.jup.ag is being actively phased out by Jupiter (deprecated as
+// of Jan 2026, rate limit reduced progressively toward full retirement) —
+// it's kept only as a last-resort, unauthenticated fallback. api.jup.ag is
+// the actually-supported endpoint going forward; Jupiter's own docs now
+// recommend an API key even on the free tier for reliability. Get one free
+// at https://portal.jup.ag/ and set EXPO_PUBLIC_JUPITER_API_KEY.
 const JUPITER_BASES = [
-  "https://lite-api.jup.ag/swap/v1",
   "https://api.jup.ag/swap/v1",
+  "https://lite-api.jup.ag/swap/v1",
 ];
 
 export const MINTS = {
@@ -40,16 +47,41 @@ async function fetchWithFallback(
   init?: RequestInit
 ): Promise<Response> {
   let lastErr: unknown;
+  let lastAuthFailure: Response | null = null;
+
   for (const base of JUPITER_BASES) {
     try {
-      const res = await fetch(`${base}${pathAndQuery}`, init);
-      // Accept any HTTP response from a reachable host; caller checks ok.
+      const headers: Record<string, string> = {
+        ...(init?.headers as Record<string, string> | undefined),
+      };
+      // Only attach the key for api.jup.ag — lite-api.jup.ag doesn't
+      // expect it, and won't be around much longer regardless.
+      if (base.includes("api.jup.ag") && config.jupiterApiKey) {
+        headers["x-api-key"] = config.jupiterApiKey;
+      }
+
+      const res = await fetch(`${base}${pathAndQuery}`, { ...init, headers });
+
+      // A 401/403 here most likely means api.jup.ag now requires a key
+      // that isn't set — worth trying the next base (lite-api.jup.ag,
+      // still keyless for now) rather than failing outright on it.
+      if ((res.status === 401 || res.status === 403) && !lastAuthFailure) {
+        lastAuthFailure = res;
+        continue;
+      }
+
       return res;
     } catch (err) {
       lastErr = err;
       console.warn(`[jupiter] ${base} unreachable:`, err);
     }
   }
+
+  // Every base either errored on network or came back unauthorized —
+  // an auth failure is more informative to the caller than a generic
+  // network error, so prefer returning that if we have one.
+  if (lastAuthFailure) return lastAuthFailure;
+
   throw lastErr instanceof Error
     ? lastErr
     : new Error("All Jupiter endpoints unreachable");
