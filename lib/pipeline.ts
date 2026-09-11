@@ -4,12 +4,17 @@ import { detectSpikes } from "./spikeDetector";
 import { generateNarrative } from "./openrouter";
 import type { Narrative } from "./types";
 
+const MAX_NARRATIVES_PER_CYCLE = 4;
+const DELAY_BETWEEN_LLM_MS = 800; // stay under free-models-per-min
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
- * Runs one full cycle: fetch live data -> detect spikes -> generate
- * narratives for anything new. Call this on an interval or manually.
- *
- * Defaults to the auto-discovered watchlist (boosted Solana tokens) plus
- * any manual seeds in WATCHED_PAIR_ADDRESSES.
+ * Runs one full cycle: fetch live data -> detect spikes -> generate narratives.
+ * LLM calls run sequentially with a short delay to respect OpenRouter free-tier
+ * rate limits (parallel retries were burning the whole minute budget).
  */
 export async function runPipelineCycle(
   pairAddresses?: string[]
@@ -33,17 +38,21 @@ export async function runPipelineCycle(
 
   if (spikes.length === 0) return [];
 
-  // Cap concurrent LLM calls so we don't burn free-tier quota in one blast
-  const limited = spikes.slice(0, 8);
-  const narratives = await Promise.allSettled(
-    limited.map((spike) => generateNarrative(spike))
+  // Strongest moves first
+  const ranked = [...spikes].sort(
+    (a, b) => Math.abs(b.magnitude) - Math.abs(a.magnitude)
   );
+  const limited = ranked.slice(0, MAX_NARRATIVES_PER_CYCLE);
 
-  const fulfilled = narratives
-    .filter(
-      (r): r is PromiseFulfilledResult<Narrative> => r.status === "fulfilled"
-    )
-    .map((r) => r.value);
+  const fulfilled: Narrative[] = [];
+  for (let i = 0; i < limited.length; i++) {
+    if (i > 0) await sleep(DELAY_BETWEEN_LLM_MS);
+    try {
+      fulfilled.push(await generateNarrative(limited[i]));
+    } catch (err) {
+      console.warn("[pipeline] narrative failed:", err);
+    }
+  }
 
   console.log(`[pipeline] Generated ${fulfilled.length} narratives`);
   return fulfilled;

@@ -4,46 +4,44 @@ import type { Narrative, Spike } from "./types";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 /**
- * Free-only rotation (Sept 2026 roster).
- *
- * 1. `openrouter/free` — OpenRouter's auto-router picks any healthy free model
- * 2. Explicit free models as fallbacks when the router itself is rate-limited
- *
- * Old IDs like llama-3.1-8b-instruct:free / gemma-2-9b-it:free are no longer
- * on the free tier, which is why earlier rotation always failed.
+ * Prefer models that have been answering cleanly on free tier.
+ * Avoid dumping 8 parallel retries across 10 models (burns free-models-per-min).
  */
 const MODEL_ROTATION = [
-  "openrouter/free",
-  "nvidia/nemotron-3-super-120b-a12b:free",
-  "google/gemma-4-31b-it:free",
-  "google/gemma-4-26b-a4b-it:free",
   "nvidia/nemotron-3.5-lightning:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "openrouter/free",
+  "google/gemma-4-31b-it:free",
   "liquid/lfm-2.5-2.6b:free",
-  "nex-agi/nex-n2.5-mini:free",
-  "inclusionai/ling-3.0-flash-sante:free",
-  "poolside/laguna-xs-2.1:free",
-  "cohere/north-mini-code:free",
 ];
 
-// Round-robin start index so successive narratives don't all hammer model[0]
 let rotationOffset = 0;
 
-function buildPrompt(spike: Spike): string {
+function buildMessages(spike: Spike): { role: string; content: string }[] {
   const { baseSymbol, quoteSymbol, kind, magnitude, currentSnapshot } = spike;
 
   const factLine =
     kind === "volume"
-      ? `1-hour trading volume is ${magnitude.toFixed(1)}x its recent baseline`
+      ? `1h volume is ${magnitude.toFixed(1)}x its recent baseline`
       : `price moved ${magnitude > 0 ? "+" : ""}${magnitude.toFixed(1)}% recently`;
 
-  return `You are a crypto market analyst writing a very short, punchy narrative blurb for a mobile app feed.
+  const system = `You write ultra-short crypto feed blurbs for a mobile app.
+Rules you MUST follow:
+- Output ONLY the final blurb text. Nothing else.
+- Exactly 1 or 2 sentences. Max ~40 words.
+- No markdown, no bullet lists, no numbering, no headings.
+- Do NOT show reasoning, analysis steps, or "thinking process".
+- Do NOT quote the instructions or restate the rules.
+- Direct, punchy trader language.`;
 
-Token pair: ${baseSymbol}/${quoteSymbol} on Solana
-Signal: ${factLine}
-Current price: $${currentSnapshot.priceUsd}
-24h price change: ${currentSnapshot.priceChangeH24}%
+  const user = `${baseSymbol}/${quoteSymbol} on Solana. Signal: ${factLine}. Price $${currentSnapshot.priceUsd}. 24h change ${currentSnapshot.priceChangeH24}%.
 
-Write exactly 1-2 sentences explaining what's likely happening and why a trader might care. Be concrete and specific, not generic. Do not use hedge phrases like "it's important to note." Do not use markdown.`;
+Write the blurb now:`;
+
+  return [
+    { role: "system", content: system },
+    { role: "user", content: user },
+  ];
 }
 
 function buildHeadline(spike: Spike): string {
@@ -59,21 +57,84 @@ function templateBlurb(spike: Spike): string {
   if (kind === "volume") {
     return `${baseSymbol}/${quoteSymbol} just printed ${magnitude.toFixed(
       1
-    )}x its recent 1h volume baseline at $${currentSnapshot.priceUsd.toFixed(
-      6
+    )}x its recent 1h volume baseline at $${formatPrice(
+      currentSnapshot.priceUsd
     )}. Liquidity is moving — watch for follow-through.`;
   }
   const dir = magnitude > 0 ? "ripped higher" : "sold off";
   return `${baseSymbol}/${quoteSymbol} ${dir} ${Math.abs(magnitude).toFixed(
     1
-  )}% with price at $${currentSnapshot.priceUsd.toFixed(
-    6
-  )} (24h ${currentSnapshot.priceChangeH24 >= 0 ? "+" : ""}${currentSnapshot.priceChangeH24.toFixed(
-    1
-  )}%). Momentum is live on Solana.`;
+  )}% with price at $${formatPrice(currentSnapshot.priceUsd)} (24h ${
+    currentSnapshot.priceChangeH24 >= 0 ? "+" : ""
+  }${currentSnapshot.priceChangeH24.toFixed(1)}%). Momentum is live on Solana.`;
 }
 
-async function callModel(model: string, prompt: string): Promise<string> {
+function formatPrice(n: number): string {
+  if (n >= 1) return n.toFixed(2);
+  if (n >= 0.01) return n.toFixed(4);
+  return n.toFixed(6);
+}
+
+/**
+ * Free reasoning models often dump chain-of-thought. Strip that and keep only
+ * a usable 1–2 sentence blurb. Returns null if nothing clean remains.
+ */
+function sanitizeBlurb(raw: string): string | null {
+  let text = raw.trim();
+  if (!text) return null;
+
+  // Strip common CoT / instruction echo patterns
+  const junkPatterns = [
+    /here's a thinking process[:\s]*/i,
+    /thinking process[:\s]*/i,
+    /analyze the request[:\s]*/i,
+    /let's craft[:\s]*/i,
+    /we need to produce[^.]*\./i,
+    /we need 1-2 sentences[^.]*\./i,
+    /rules you must follow[\s\S]*/i,
+    /do not (show|use|include)[^.]*\./gi,
+    /\*\*[^*]+\*\*/g, // bold markdown
+    /^#+\s+.+$/gm, // headings
+    /^\s*[-*]\s+/gm, // bullets
+    /^\s*\d+[.)]\s+/gm, // numbered lists
+  ];
+
+  for (const p of junkPatterns) {
+    text = text.replace(p, " ");
+  }
+
+  // If model embedded a quoted final line, prefer that
+  const quoted = text.match(/["“]([^"”]{20,200})["”]/);
+  if (quoted?.[1] && !/thinking|analyze|request/i.test(quoted[1])) {
+    text = quoted[1];
+  }
+
+  // Collapse whitespace
+  text = text.replace(/\s+/g, " ").trim();
+
+  // Drop if still looks like meta-reasoning
+  if (
+    /thinking process|analyze the request|token pair:\s*|signal:\s*|format:\s*|length:\s*/i.test(
+      text
+    )
+  ) {
+    return null;
+  }
+
+  // Take first 1–2 sentences
+  const sentences = text.match(/[^.!?]+[.!?]+/g);
+  if (sentences && sentences.length > 0) {
+    text = sentences.slice(0, 2).join(" ").trim();
+  }
+
+  // Too short or still junk
+  if (text.length < 24 || text.length > 280) return null;
+  if (/^\s*(output|blurb|response)\s*:/i.test(text)) return null;
+
+  return text;
+}
+
+async function callModel(model: string, spike: Spike): Promise<string> {
   if (!config.openRouterApiKey) {
     throw new Error("OpenRouter API key missing");
   }
@@ -88,9 +149,9 @@ async function callModel(model: string, prompt: string): Promise<string> {
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 120,
-      temperature: 0.7,
+      messages: buildMessages(spike),
+      max_tokens: 100,
+      temperature: 0.55,
     }),
   });
 
@@ -102,9 +163,14 @@ async function callModel(model: string, prompt: string): Promise<string> {
   }
 
   const data = await res.json();
-  const text = data?.choices?.[0]?.message?.content?.trim();
-  if (!text) throw new Error(`OpenRouter (${model}) returned empty content`);
-  return text;
+  const raw = data?.choices?.[0]?.message?.content?.trim();
+  if (!raw) throw new Error(`OpenRouter (${model}) returned empty content`);
+
+  const cleaned = sanitizeBlurb(raw);
+  if (!cleaned) {
+    throw new Error(`OpenRouter (${model}) returned unusable CoT/junk`);
+  }
+  return cleaned;
 }
 
 function orderedModels(): string[] {
@@ -115,17 +181,15 @@ function orderedModels(): string[] {
 }
 
 /**
- * Generate a narrative blurb using only free OpenRouter models.
- * Rotates starting model per call; falls back to template if all fail.
+ * Generate a clean 1–2 sentence narrative using free OpenRouter models only.
  */
 export async function generateNarrative(spike: Spike): Promise<Narrative> {
-  const prompt = buildPrompt(spike);
   const headline = buildHeadline(spike);
   const models = orderedModels();
 
   for (const model of models) {
     try {
-      const blurb = await callModel(model, prompt);
+      const blurb = await callModel(model, spike);
       console.log(`[openrouter] ok via ${model} for ${spike.baseSymbol}`);
       return {
         id: `${spike.pairAddress}-${spike.detectedAt}`,
