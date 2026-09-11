@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { colors, spacing } from "../constants/theme";
 import { markWelcomeSeen } from "../lib/onboarding";
 import { requestNotificationPermission } from "../lib/notifications";
+import { ensureBackgroundSpikeTask } from "../lib/backgroundSpikes";
 
 export default function WelcomeScreen() {
   const router = useRouter();
@@ -11,7 +12,15 @@ export default function WelcomeScreen() {
     await markWelcomeSeen();
     // Fire-and-forget — don't block navigation on the permission dialog,
     // and don't treat a decline as an error. The feed works fine without it.
-    requestNotificationPermission().catch(() => {});
+    requestNotificationPermission()
+      .then((granted) => {
+        if (granted) {
+          // Register the native background task so spikes still alert with
+          // the app killed. No-op in Expo Go / on OS restrictions.
+          ensureBackgroundSpikeTask().catch(() => {});
+        }
+      })
+      .catch(() => {});
     router.replace("/");
   }
 
@@ -39,7 +48,7 @@ export default function WelcomeScreen() {
           />
           <PitchLine
             label="STAY ALERTED"
-            text="Get notified the moment a high-momentum narrative fires while the app's open."
+            text="A native background task pushes a spike alert to your phone even when the app is closed."
           />
         </View>
 

@@ -39,11 +39,10 @@ if (Platform.OS === "android") {
 }
 
 /**
- * Fires a local notification for a fresh narrative. This is triggered by
- * the in-app polling loop, so it works reliably while the app is open or
- * briefly backgrounded — it will NOT wake the app from fully closed/killed,
- * since there's no server pushing to a device token. That would need a
- * background task + backend, which is out of scope for this build.
+ * Fires a local notification for a fresh LLM narrative while the app is
+ * running. For the genuinely-mobile-native path — spike alerts delivered even
+ * with the app fully killed — see backgroundSpikes.ts (TaskManager +
+ * BackgroundFetch reusing the spike detector; no server involved).
  */
 export async function notifyNarrative(narrative: Narrative): Promise<void> {
   await Notifications.scheduleNotificationAsync({

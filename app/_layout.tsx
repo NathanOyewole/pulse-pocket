@@ -1,4 +1,7 @@
 import "../lib/polyfills";
+// Registers the TaskManager handler at JS boot so a cold-start background
+// fetch from the OS can find it. No side effects other than the registration.
+import "../lib/backgroundSpikes";
 
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";

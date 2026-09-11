@@ -15,6 +15,10 @@ import {
   type AppSettings,
 } from "../lib/settings";
 import { requestNotificationPermission } from "../lib/notifications";
+import {
+  ensureBackgroundSpikeTask,
+  unregisterBackgroundSpikeTask,
+} from "../lib/backgroundSpikes";
 
 interface SettingsContextValue extends AppSettings {
   setSwapAmountSol: (amount: number) => Promise<void>;
@@ -47,6 +51,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         await saveNotificationsEnabled(false);
         return;
       }
+      // Background fetch only runs after this point; failures are non-fatal
+      // (Expo Go, OS restriction). In-app polling alerts still work regardless.
+      ensureBackgroundSpikeTask().catch(() => {});
+    } else {
+      unregisterBackgroundSpikeTask().catch(() => {});
     }
     setNotifs(enabled);
     await saveNotificationsEnabled(enabled);
