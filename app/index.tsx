@@ -15,7 +15,6 @@ import { runPipelineCycle } from "../lib/pipeline";
 import type { Narrative } from "../lib/types";
 import { useWallet } from "../hooks/useWallet";
 import { NarrativeCard } from "../components/NarrativeCard";
-import { WATCHED_PAIR_ADDRESSES } from "../lib/dexscreener";
 import { hasSeenWelcome } from "../lib/onboarding";
 import { notifyNarrative } from "../lib/notifications";
 
@@ -70,11 +69,7 @@ export default function HomeScreen() {
       setNarratives((prev) => [...results, ...prev].slice(0, 50));
       setLastRun(Date.now());
       if (results.length === 0 && narratives.length === 0) {
-        setError(
-          WATCHED_PAIR_ADDRESSES.length === 0
-            ? "No pairs configured yet — add Solana pair addresses in lib/dexscreener.ts."
-            : "No spikes detected this cycle. Feed updates automatically."
-        );
+        setError("No spikes detected yet. Feed updates automatically.");
       }
     } catch (err: any) {
       setError(err?.message ?? String(err));

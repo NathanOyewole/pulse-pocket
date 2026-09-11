@@ -1,4 +1,5 @@
-import { fetchPairSnapshots, WATCHED_PAIR_ADDRESSES } from "./dexscreener";
+import { fetchPairSnapshots } from "./dexscreener";
+import { getWatchlistPairs } from "./watchlist";
 import { detectSpikes } from "./spikeDetector";
 import { generateNarrative } from "./openrouter";
 import type { Narrative } from "./types";
@@ -7,18 +8,24 @@ import type { Narrative } from "./types";
  * Runs one full cycle: fetch live data -> detect spikes -> generate
  * narratives for anything new. Call this on an interval (see useNarrativeFeed
  * hook) or manually for testing.
+ *
+ * Defaults to the auto-discovered watchlist (currently-boosted Solana
+ * tokens, refreshed on its own slower cadence — see lib/watchlist.ts).
+ * Pass an explicit list to override, e.g. for testing a specific pair.
  */
 export async function runPipelineCycle(
-  pairAddresses: string[] = WATCHED_PAIR_ADDRESSES
+  pairAddresses?: string[]
 ): Promise<Narrative[]> {
-  if (pairAddresses.length === 0) {
+  const watchlist = pairAddresses ?? (await getWatchlistPairs());
+
+  if (watchlist.length === 0) {
     console.warn(
-      "[pipeline] WATCHED_PAIR_ADDRESSES is empty — add some Solana pair addresses in lib/dexscreener.ts to see any data."
+      "[pipeline] Watchlist is empty — auto-discovery may have failed on its first run with no cache yet. Will retry next cycle."
     );
     return [];
   }
 
-  const snapshots = await fetchPairSnapshots(pairAddresses);
+  const snapshots = await fetchPairSnapshots(watchlist);
   const spikes = await detectSpikes(snapshots);
 
   if (spikes.length === 0) return [];

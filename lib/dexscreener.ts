@@ -5,11 +5,14 @@ import type { TokenPairSnapshot } from "./types";
 
 const BASE_URL = "https://api.dexscreener.com";
 
-// A starter watchlist of Solana pairs to track. Swap/add pair addresses
-// as needed — this is intentionally small for the hackathon MVP so we're
-// not hammering the API or drowning the feed in noise.
+// Optional manual seed list — pairs you always want tracked regardless of
+// what's currently boosted (e.g. a blue-chip pair as a baseline so the feed
+// never looks totally empty). Merged with auto-discovered pairs at runtime,
+// not required to be filled in — see lib/watchlist.ts for the auto-discovery
+// that now drives WATCHED_PAIR_ADDRESSES by default.
 export const WATCHED_PAIR_ADDRESSES: string[] = [
-  // Example: SOL/USDC on Raydium — replace/extend with real pairs you want to track
+  // Example: SOL/USDC on Raydium — add pair addresses here if you want them
+  // always included alongside whatever's auto-discovered.
   // "Cbf...actualPairAddress",
 ];
 
@@ -42,6 +45,86 @@ function toSnapshot(pair: DexScreenerPair): TokenPairSnapshot {
     liquidityUsd: pair.liquidity?.usd ?? 0,
     fetchedAt: Date.now(),
   };
+}
+
+interface DexScreenerBoostEntry {
+  chainId: string;
+  tokenAddress: string;
+}
+
+/**
+ * Fetches currently-boosted Solana tokens from DexScreener's public boost
+ * feeds — a reasonable proxy for "tokens people are actively paying
+ * attention to right now" without needing a hand-maintained address list.
+ * Combines both the "latest" and "top" boost feeds and dedupes.
+ *
+ * Rate limit note: these endpoints are capped at 60 req/min (vs 300/min
+ * for pair endpoints) — this is called by the watchlist refresh cycle,
+ * which runs far less often than the narrative-polling cycle, so this
+ * stays well under that limit.
+ */
+export async function fetchBoostedSolanaTokenAddresses(): Promise<string[]> {
+  const [latestRes, topRes] = await Promise.all([
+    fetch(`${BASE_URL}/token-boosts/latest/v1`),
+    fetch(`${BASE_URL}/token-boosts/top/v1`),
+  ]);
+
+  const addresses = new Set<string>();
+
+  for (const res of [latestRes, topRes]) {
+    if (!res.ok) continue; // one feed failing shouldn't kill the other
+    const entries: DexScreenerBoostEntry[] = await res.json();
+    for (const entry of entries) {
+      if (entry.chainId === "solana" && entry.tokenAddress) {
+        addresses.add(entry.tokenAddress);
+      }
+    }
+  }
+
+  return Array.from(addresses);
+}
+
+/**
+ * Resolves token (mint) addresses to their trading pairs and picks the
+ * single highest-liquidity pair per token — a token can have many pools
+ * across different DEXes, and tracking every one would just create
+ * duplicate near-identical narratives for the same token.
+ */
+export async function resolveTokensToTopPairs(
+  tokenAddresses: string[]
+): Promise<TokenPairSnapshot[]> {
+  if (tokenAddresses.length === 0) return [];
+
+  const batches: string[][] = [];
+  for (let i = 0; i < tokenAddresses.length; i += 30) {
+    batches.push(tokenAddresses.slice(i, i + 30));
+  }
+
+  const bestPairByToken = new Map<string, TokenPairSnapshot>();
+
+  for (const batch of batches) {
+    const url = `${BASE_URL}/latest/dex/tokens/${batch.join(",")}`;
+    const res = await fetch(url);
+
+    if (!res.ok) {
+      throw new Error(
+        `DexScreener tokens request failed: ${res.status} ${res.statusText}`
+      );
+    }
+
+    const data: DexScreenerPairsResponse = await res.json();
+
+    for (const pair of data.pairs ?? []) {
+      const snapshot = toSnapshot(pair);
+      const key = snapshot.baseMint.toLowerCase();
+      const existing = bestPairByToken.get(key);
+      if (!existing || snapshot.liquidityUsd > existing.liquidityUsd) {
+        bestPairByToken.set(key, snapshot);
+      }
+    }
+  }
+
+  return Array.from(bestPairByToken.values());
 }
 
 /**
