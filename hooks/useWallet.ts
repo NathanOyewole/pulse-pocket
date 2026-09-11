@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   connectWallet,
   disconnectWallet,
@@ -8,7 +16,22 @@ import {
 } from "../lib/wallet";
 import { resolveSkrDomain } from "../lib/skrDomain";
 
-export function useWallet() {
+interface WalletContextValue extends WalletState {
+  balance: number | null;
+  skrDomain: string | null;
+  loading: boolean;
+  error: string | null;
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
+}
+
+const WalletContext = createContext<WalletContextValue | null>(null);
+
+/**
+ * Mount once at the app root so restore runs a single time and every screen
+ * shares the same connected state (no wallet popup on pair detail / remount).
+ */
+export function WalletProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<WalletState>({
     connected: false,
     pubkey: null,
@@ -18,15 +41,34 @@ export function useWallet() {
   const [skrDomain, setSkrDomain] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [restored, setRestored] = useState(false);
 
-  // Try to silently restore a previous session on mount.
   useEffect(() => {
-    restoreWalletSession().then((result) => {
-      setState(result);
-      if (result.pubkey) {
-        resolveSkrDomain(result.pubkey).then(setSkrDomain);
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await restoreWalletSession();
+        if (cancelled) return;
+        setState(result);
+        if (result.pubkey) {
+          const [bal, domain] = await Promise.all([
+            getBalanceSol(result.pubkey).catch(() => null),
+            resolveSkrDomain(result.pubkey).catch(() => null),
+          ]);
+          if (!cancelled) {
+            setBalance(bal);
+            setSkrDomain(domain);
+          }
+        }
+      } catch {
+        // stay disconnected
+      } finally {
+        if (!cancelled) setRestored(true);
       }
-    }).catch(() => {});
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const connect = useCallback(async () => {
@@ -37,14 +79,14 @@ export function useWallet() {
       setState(result);
       if (result.pubkey) {
         const [bal, domain] = await Promise.all([
-          getBalanceSol(result.pubkey),
-          resolveSkrDomain(result.pubkey),
+          getBalanceSol(result.pubkey).catch(() => null),
+          resolveSkrDomain(result.pubkey).catch(() => null),
         ]);
         setBalance(bal);
         setSkrDomain(domain);
       }
-    } catch (err: any) {
-      setError(err?.message ?? String(err));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -57,12 +99,35 @@ export function useWallet() {
       setState({ connected: false, pubkey: null, authToken: null });
       setBalance(null);
       setSkrDomain(null);
-    } catch (err: any) {
-      setError(err?.message ?? String(err));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
   }, []);
 
-  return { ...state, balance, skrDomain, loading, error, connect, disconnect };
+  const value = useMemo(
+    () => ({
+      ...state,
+      balance,
+      skrDomain,
+      loading: loading || !restored,
+      error,
+      connect,
+      disconnect,
+    }),
+    [state, balance, skrDomain, loading, restored, error, connect, disconnect]
+  );
+
+  return (
+    <WalletContext.Provider value={value}>{children}</WalletContext.Provider>
+  );
+}
+
+export function useWallet(): WalletContextValue {
+  const ctx = useContext(WalletContext);
+  if (!ctx) {
+    throw new Error("useWallet must be used within WalletProvider");
+  }
+  return ctx;
 }

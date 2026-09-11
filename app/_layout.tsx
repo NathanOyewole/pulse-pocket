@@ -3,10 +3,11 @@ import "../lib/polyfills";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { colors } from "../constants/theme";
+import { WalletProvider } from "../hooks/useWallet";
 
 export default function RootLayout() {
   return (
-    <>
+    <WalletProvider>
       <StatusBar style="light" />
       <Stack
         screenOptions={{
@@ -43,6 +44,6 @@ export default function RootLayout() {
           }}
         />
       </Stack>
-    </>
+    </WalletProvider>
   );
 }
