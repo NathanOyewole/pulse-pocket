@@ -1,13 +1,51 @@
-import { View, Text, StyleSheet, Pressable, Switch, ScrollView } from "react-native";
+import { useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  Switch,
+  ScrollView,
+  TextInput,
+} from "react-native";
 import { Stack } from "expo-router";
 import { colors, spacing } from "../constants/theme";
 import { useWallet } from "../hooks/useWallet";
 import { useSettings } from "../hooks/useSettings";
-import { SWAP_AMOUNT_OPTIONS } from "../lib/settings";
+import {
+  SWAP_AMOUNT_OPTIONS,
+  SWAP_AMOUNT_MIN_SOL,
+  SWAP_AMOUNT_MAX_SOL,
+  formatSolAmount,
+  isValidSwapAmount,
+} from "../lib/settings";
 
 export default function SettingsScreen() {
   const wallet = useWallet();
   const settings = useSettings();
+  const [customRaw, setCustomRaw] = useState("");
+  const [customError, setCustomError] = useState<string | null>(null);
+
+  function commitCustomAmount() {
+    const trimmed = customRaw.trim();
+    if (!trimmed) return;
+    const value = Number(trimmed);
+    if (!isValidSwapAmount(value)) {
+      setCustomError(
+        `Enter an amount between ${SWAP_AMOUNT_MIN_SOL} and ${SWAP_AMOUNT_MAX_SOL} SOL.`
+      );
+      return;
+    }
+    setCustomError(null);
+    setCustomRaw("");
+    settings.setSwapAmountSol(value);
+  }
+
+  function selectPreset(amount: number) {
+    setCustomRaw("");
+    setCustomError(null);
+    settings.setSwapAmountSol(amount);
+  }
 
   return (
     <>
@@ -23,7 +61,7 @@ export default function SettingsScreen() {
             return (
               <Pressable
                 key={amt}
-                onPress={() => settings.setSwapAmountSol(amt)}
+                onPress={() => selectPreset(amt)}
                 style={[styles.chip, active && styles.chipActive]}
               >
                 <Text style={[styles.chipText, active && styles.chipTextActive]}>
@@ -33,6 +71,35 @@ export default function SettingsScreen() {
             );
           })}
         </View>
+
+        <View style={styles.customRow}>
+          <TextInput
+            style={[styles.customInput, customError && styles.customInputError]}
+            value={customRaw}
+            onChangeText={(text) => {
+              setCustomRaw(text);
+              if (customError) setCustomError(null);
+            }}
+            placeholder="Custom amount…"
+            placeholderTextColor={colors.text.tertiary}
+            keyboardType="decimal-pad"
+            returnKeyType="done"
+            onSubmitEditing={commitCustomAmount}
+            onBlur={commitCustomAmount}
+          />
+          {customRaw.trim().length > 0 ? (
+            <Pressable style={styles.customApply} onPress={commitCustomAmount}>
+              <Text style={styles.customApplyText}>Set</Text>
+            </Pressable>
+          ) : null}
+        </View>
+        {customError ? (
+          <Text style={styles.customErrorText}>{customError}</Text>
+        ) : null}
+        <Text style={styles.hint}>
+          Range {SWAP_AMOUNT_MIN_SOL}–{SWAP_AMOUNT_MAX_SOL} SOL. Active:{" "}
+          {formatSolAmount(settings.swapAmountSol)} SOL.
+        </Text>
 
         <Text style={[styles.section, { marginTop: spacing.xl }]}>ALERTS</Text>
         <View style={styles.row}>
@@ -129,6 +196,42 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: colors.accent,
+  },
+  customRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  customInput: {
+    flex: 1,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    color: colors.text.primary,
+    fontSize: 14,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  customInputError: {
+    borderColor: colors.negative,
+  },
+  customApply: {
+    backgroundColor: colors.accent,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  customApplyText: {
+    color: colors.background,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  customErrorText: {
+    color: colors.negative,
+    fontSize: 12,
+    marginTop: spacing.xs,
   },
   row: {
     flexDirection: "row",

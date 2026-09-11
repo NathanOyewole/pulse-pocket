@@ -20,6 +20,7 @@ import { NarrativeCard } from "../components/NarrativeCard";
 import { hasSeenWelcome } from "../lib/onboarding";
 import { notifyNarrative } from "../lib/notifications";
 import { friendlyError } from "../lib/errors";
+import { MAX_FEED_ITEMS, loadFeed, saveFeed } from "../lib/feedStorage";
 
 const POLL_INTERVAL_MS = 90_000;
 
@@ -37,6 +38,21 @@ export default function HomeScreen() {
   const { notificationsEnabled } = useSettings();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isFirstCycleRef = useRef(true);
+  // Mirrors `narratives` so the polling interval's closure never reads stale
+  // state when computing the next feed.
+  const narrativesRef = useRef<Narrative[]>([]);
+
+  useEffect(() => {
+    narrativesRef.current = narratives;
+  }, [narratives]);
+
+  // Restore the feed from disk so a reload (or a mid-judging app kill)
+  // doesn't wipe the demo.
+  useEffect(() => {
+    loadFeed().then((feed) => {
+      setNarratives((prev) => (prev.length === 0 ? feed : prev));
+    });
+  }, []);
 
   const clearFeedError = useCallback(() => setError(null), []);
   useAutoClearError(!!error, clearFeedError);
@@ -69,13 +85,23 @@ export default function HomeScreen() {
         }
         isFirstCycleRef.current = false;
 
-        setNarratives((prev) => [...results, ...prev].slice(0, 50));
-        setLastRun(Date.now());
-        if (results.length === 0 && narratives.length === 0) {
-          setEmptyHint("No spikes detected yet. Feed updates automatically.");
-        } else {
-          setEmptyHint(null);
+        const existing = narrativesRef.current;
+        const byId = new Map(existing.map((n) => [n.id, n]));
+        for (const n of results) {
+          if (!byId.has(n.id)) byId.set(n.id, n);
         }
+        const next = Array.from(byId.values())
+          .sort((a, b) => b.generatedAt - a.generatedAt)
+          .slice(0, MAX_FEED_ITEMS);
+
+        setNarratives(next);
+        saveFeed(next).catch(() => {});
+        setLastRun(Date.now());
+        setEmptyHint(
+          next.length === 0
+            ? "No spikes detected yet. Feed updates automatically."
+            : null
+        );
       } catch (err: unknown) {
         setError(friendlyError(err));
       } finally {
@@ -83,7 +109,7 @@ export default function HomeScreen() {
         setRefreshing(false);
       }
     },
-    [narratives.length, notificationsEnabled]
+    [notificationsEnabled]
   );
 
   useEffect(() => {

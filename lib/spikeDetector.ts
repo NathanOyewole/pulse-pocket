@@ -5,6 +5,10 @@ import type { Spike, TokenPairSnapshot } from "./types";
 const HISTORY_LENGTH = 12;
 const STORAGE_KEY = "pulsepocket:snapshotHistory";
 
+// Snapshots older than this are ignored when computing the baseline and pruned
+// from the persisted history, so a weekend gap doesn't drown out a new move.
+export const HISTORY_TTL_MS = 3 * 60 * 60 * 1000;
+
 // DexScreener already computes 1h / 24h % change server-side — those do NOT
 // need local history. Volume spikes still need a short local baseline.
 const VOLUME_SPIKE_MULTIPLIER = 2;
@@ -12,15 +16,32 @@ const MIN_HISTORY_FOR_VOLUME = 1;
 const PRICE_SPIKE_PERCENT_H1 = 8;
 const PRICE_SPIKE_PERCENT_H24 = 25;
 
+// A minimal key-value store abstraction so the detector can be tested without
+// touching React Native's AsyncStorage.
+export interface SnapshotStore {
+  getItem(key: string): Promise<string | null>;
+  setItem(key: string, value: string): Promise<void>;
+  removeItem(key: string): Promise<void>;
+}
+
+const asyncStorageStore: SnapshotStore = {
+  getItem: AsyncStorage.getItem.bind(AsyncStorage),
+  setItem: AsyncStorage.setItem.bind(AsyncStorage),
+  removeItem: AsyncStorage.removeItem.bind(AsyncStorage),
+};
+
 type HistoryMap = Record<string, TokenPairSnapshot[]>;
 
-async function loadHistory(): Promise<HistoryMap> {
-  const raw = await AsyncStorage.getItem(STORAGE_KEY);
+async function loadHistory(store: SnapshotStore): Promise<HistoryMap> {
+  const raw = await store.getItem(STORAGE_KEY);
   return raw ? JSON.parse(raw) : {};
 }
 
-async function saveHistory(history: HistoryMap): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+async function saveHistory(
+  store: SnapshotStore,
+  history: HistoryMap
+): Promise<void> {
+  await store.setItem(STORAGE_KEY, JSON.stringify(history));
 }
 
 function average(nums: number[]): number {
@@ -39,10 +60,12 @@ function scoreSpike(s: Spike): number {
  * fire on the first cycle; volume signals need one prior sample.
  */
 export async function detectSpikes(
-  snapshots: TokenPairSnapshot[]
+  snapshots: TokenPairSnapshot[],
+  store: SnapshotStore = asyncStorageStore
 ): Promise<Spike[]> {
-  const history = await loadHistory();
+  const history = await loadHistory(store);
   const byPair = new Map<string, Spike>();
+  const now = Date.now();
 
   const consider = (spike: Spike) => {
     const existing = byPair.get(spike.pairAddress);
@@ -52,7 +75,11 @@ export async function detectSpikes(
   };
 
   for (const snapshot of snapshots) {
-    const pastSnapshots = history[snapshot.pairAddress] ?? [];
+    // Only count recent snapshots in the baseline; stale history (weekend gap)
+    // should not drown a real new-volume move.
+    const pastSnapshots = (history[snapshot.pairAddress] ?? []).filter(
+      (s) => now - s.fetchedAt <= HISTORY_TTL_MS
+    );
     const baselineVolumeH1 = average(pastSnapshots.map((s) => s.volumeH1));
 
     // Price (1h) — available immediately from DexScreener
@@ -105,11 +132,13 @@ export async function detectSpikes(
     history[snapshot.pairAddress] = updated;
   }
 
-  await saveHistory(history);
+  await saveHistory(store, history);
   return Array.from(byPair.values());
 }
 
 /** Clears stored history — useful when testing threshold changes. */
-export async function resetHistory(): Promise<void> {
-  await AsyncStorage.removeItem(STORAGE_KEY);
+export async function resetHistory(
+  store: SnapshotStore = asyncStorageStore
+): Promise<void> {
+  await store.removeItem(STORAGE_KEY);
 }

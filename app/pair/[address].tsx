@@ -17,8 +17,12 @@ import { useWallet } from "../../hooks/useWallet";
 import { useSettings } from "../../hooks/useSettings";
 import { swapSolForToken } from "../../lib/jupiter";
 import { friendlyError } from "../../lib/errors";
+import { formatSolAmount } from "../../lib/settings";
 import { useAutoClearError } from "../../hooks/useAutoClearError";
 import { TokenLogo } from "../../components/TokenLogo";
+import { RiskBadge } from "../../components/RiskBadge";
+import { getTokenRisk } from "../../lib/risks";
+import type { TokenRisk } from "../../lib/types";
 
 function formatPrice(n: number): string {
   if (!Number.isFinite(n)) return "—";
@@ -67,6 +71,7 @@ export default function PairDetailScreen() {
   const { swapAmountSol } = useSettings();
 
   const [snapshot, setSnapshot] = useState<TokenPairSnapshot | null>(null);
+  const [risk, setRisk] = useState<TokenRisk | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [swapStatus, setSwapStatus] = useState<
@@ -108,6 +113,22 @@ export default function PairDetailScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Rug-screen the base token when we know its mint. Best-effort: failures
+  // simply leave the risk badge hidden.
+  useEffect(() => {
+    let cancelled = false;
+    setRisk(null);
+    if (!snapshot?.baseMint) return;
+    getTokenRisk(snapshot.baseMint)
+      .then((r) => {
+        if (!cancelled) setRisk(r);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [snapshot?.baseMint]);
 
   async function handleSwap() {
     if (!wallet.pubkey || !wallet.authToken || !snapshot) return;
@@ -209,6 +230,8 @@ export default function PairDetailScreen() {
               </Text>
             </View>
 
+            <RiskBadge risk={risk} />
+
             <View style={styles.grid}>
               <Stat label="LIQUIDITY" value={formatUsd(snapshot.liquidityUsd)} />
               <Stat label="VOL 1H" value={formatUsd(snapshot.volumeH1)} />
@@ -263,7 +286,7 @@ export default function PairDetailScreen() {
                 ) : (
                   <Text style={styles.swapButtonText}>
                     {wallet.connected
-                      ? `Swap ${swapAmountSol} SOL → ${snapshot.baseSymbol}`
+                      ? `Swap ${formatSolAmount(swapAmountSol)} SOL → ${snapshot.baseSymbol}`
                       : "Connect wallet on feed to swap"}
                   </Text>
                 )}

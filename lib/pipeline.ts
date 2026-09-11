@@ -2,7 +2,8 @@ import { fetchPairSnapshots } from "./dexscreener";
 import { getWatchlistPairs } from "./watchlist";
 import { detectSpikes } from "./spikeDetector";
 import { generateNarrative } from "./openrouter";
-import type { Narrative } from "./types";
+import { getTokenRisk } from "./risks";
+import type { Narrative, Spike } from "./types";
 
 const MAX_NARRATIVES_PER_CYCLE = 4;
 const DELAY_BETWEEN_LLM_MS = 800; // stay under free-models-per-min
@@ -44,11 +45,21 @@ export async function runPipelineCycle(
   );
   const limited = ranked.slice(0, MAX_NARRATIVES_PER_CYCLE);
 
+  // Rug-screen the movers. Runs in parallel and never fails the cycle: a
+  // rate-limited or missing Birdeye key just means no risk footer on cards.
+  const riskResults = await Promise.allSettled(
+    limited.map((s) => getTokenRisk(s.currentSnapshot.baseMint))
+  );
+  const screened: Spike[] = limited.map((s, i) => ({
+    ...s,
+    risk: riskResults[i].status === "fulfilled" ? riskResults[i].value : null,
+  }));
+
   const fulfilled: Narrative[] = [];
-  for (let i = 0; i < limited.length; i++) {
+  for (let i = 0; i < screened.length; i++) {
     if (i > 0) await sleep(DELAY_BETWEEN_LLM_MS);
     try {
-      fulfilled.push(await generateNarrative(limited[i]));
+      fulfilled.push(await generateNarrative(screened[i]));
     } catch (err) {
       console.warn("[pipeline] narrative failed:", err);
     }

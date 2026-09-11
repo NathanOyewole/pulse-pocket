@@ -13,7 +13,9 @@ import { swapSolForToken } from "../lib/jupiter";
 import { friendlyError } from "../lib/errors";
 import { useSettings } from "../hooks/useSettings";
 import { useAutoClearError } from "../hooks/useAutoClearError";
+import { formatSolAmount } from "../lib/settings";
 import { TokenLogo } from "./TokenLogo";
+import { RiskBadge } from "./RiskBadge";
 
 interface NarrativeCardProps {
   narrative: Narrative;
@@ -148,6 +150,8 @@ export function NarrativeCard({
         </View>
       </View>
 
+      <RiskBadge risk={spike.risk} />
+
       <Text style={styles.tapHint}>Tap for details</Text>
 
       {swapStatus === "success" && txSignature ? (
@@ -174,7 +178,7 @@ export function NarrativeCard({
           ) : (
             <Text style={styles.swapButtonText}>
               {walletConnected
-                ? `Swap ${swapAmountSol} SOL → ${spike.baseSymbol}`
+                ? `Swap ${formatSolAmount(swapAmountSol)} SOL → ${spike.baseSymbol}`
                 : "Connect wallet to act on this"}
             </Text>
           )}
