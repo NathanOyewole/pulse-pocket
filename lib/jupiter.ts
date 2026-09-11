@@ -5,18 +5,20 @@ import {
 import { VersionedTransaction } from "@solana/web3.js";
 import { getConnection } from "./wallet";
 
-const JUPITER_QUOTE_URL = "https://quote-api.jup.ag/v6/quote";
-const JUPITER_SWAP_URL = "https://quote-api.jup.ag/v6/swap";
+// quote-api.jup.ag/v6 was fully deprecated Oct 2025.
+// lite-api works without an API key (rate-limited); for production scale
+// get a key at https://portal.jup.ag and switch base to api.jup.ag + x-api-key.
+const JUPITER_BASE = "https://lite-api.jup.ag/swap/v1";
+const JUPITER_QUOTE_URL = `${JUPITER_BASE}/quote`;
+const JUPITER_SWAP_URL = `${JUPITER_BASE}/swap`;
 
-// Common mint addresses — extend as needed for whatever tokens show up
-// in narrative cards.
 export const MINTS = {
   SOL: "So11111111111111111111111111111111111111112",
   USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
 } as const;
 
 export interface SwapQuote {
-  raw: any; // full Jupiter quote response, passed through to /swap as-is
+  raw: any;
   inputMint: string;
   outputMint: string;
   inAmount: string;
@@ -24,16 +26,29 @@ export interface SwapQuote {
   priceImpactPct: string;
 }
 
+function networkErrorMessage(err: unknown, context: string): Error {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (
+    msg.includes("Network request failed") ||
+    msg.includes("Failed to fetch") ||
+    msg.includes("NetworkError")
+  ) {
+    return new Error(
+      `${context}: network failed. Check internet / Jupiter API status.`
+    );
+  }
+  return err instanceof Error ? err : new Error(msg);
+}
+
 /**
- * Get a swap quote from Jupiter. Amounts are in the input token's smallest
- * unit (e.g. lamports for SOL, 6-decimal units for USDC) — convert before
- * calling this.
+ * Get a swap quote from Jupiter. Amount is in the input token's smallest unit
+ * (lamports for SOL).
  */
 export async function getSwapQuote(
   inputMint: string,
   outputMint: string,
   amount: number,
-  slippageBps: number = 50 // 0.5% default slippage tolerance
+  slippageBps: number = 300 // 3% — memecoins move fast
 ): Promise<SwapQuote> {
   const params = new URLSearchParams({
     inputMint,
@@ -42,12 +57,29 @@ export async function getSwapQuote(
     slippageBps: slippageBps.toString(),
   });
 
-  const res = await fetch(`${JUPITER_QUOTE_URL}?${params}`);
+  let res: Response;
+  try {
+    res = await fetch(`${JUPITER_QUOTE_URL}?${params}`);
+  } catch (err) {
+    throw networkErrorMessage(err, "Jupiter quote");
+  }
+
   if (!res.ok) {
-    throw new Error(`Jupiter quote failed: ${res.status} ${res.statusText}`);
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `Jupiter quote failed: ${res.status} ${res.statusText}${body ? ` — ${body.slice(0, 120)}` : ""}`
+    );
   }
 
   const data = await res.json();
+
+  if (!data?.outAmount) {
+    throw new Error(
+      data?.error ||
+        "No swap route found for this token (may have no liquidity on Jupiter)."
+    );
+  }
+
   return {
     raw: data,
     inputMint,
@@ -59,44 +91,52 @@ export async function getSwapQuote(
 }
 
 /**
- * Executes a swap: builds the transaction from a quote via Jupiter's
- * /swap endpoint, then signs and sends it through Mobile Wallet Adapter
- * (opens the wallet app for approval) in the same transact session.
- *
- * Requires the auth token from an already-connected wallet session
- * (see lib/wallet.ts connectWallet/restoreWalletSession).
+ * Build + sign + send a swap via Jupiter + Mobile Wallet Adapter.
  */
 export async function executeSwap(
   authToken: string,
   userPublicKey: string,
   quote: SwapQuote
 ): Promise<string> {
-  // 1. Build the unsigned swap transaction from Jupiter
-  const swapRes = await fetch(JUPITER_SWAP_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      quoteResponse: quote.raw,
-      userPublicKey,
-      wrapAndUnwrapSol: true,
-      dynamicComputeUnitLimit: true,
-      prioritizationFeeLamports: "auto",
-    }),
-  });
+  let swapRes: Response;
+  try {
+    swapRes = await fetch(JUPITER_SWAP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        quoteResponse: quote.raw,
+        userPublicKey,
+        wrapAndUnwrapSol: true,
+        dynamicComputeUnitLimit: true,
+        prioritizationFeeLamports: "auto",
+      }),
+    });
+  } catch (err) {
+    throw networkErrorMessage(err, "Jupiter swap build");
+  }
 
   if (!swapRes.ok) {
-    throw new Error(`Jupiter swap build failed: ${swapRes.status}`);
+    const body = await swapRes.text().catch(() => "");
+    throw new Error(
+      `Jupiter swap build failed: ${swapRes.status}${body ? ` — ${body.slice(0, 120)}` : ""}`
+    );
   }
 
   const { swapTransaction } = await swapRes.json();
+  if (!swapTransaction) {
+    throw new Error("Jupiter did not return a swapTransaction");
+  }
+
   const txBuffer = Buffer.from(swapTransaction, "base64");
   const transaction = VersionedTransaction.deserialize(txBuffer);
 
-  // 2. Sign and send via the wallet app (Phantom/Solflare) through MWA
   const signature = await transact(async (wallet: Web3MobileWallet) => {
     await wallet.reauthorize({
       auth_token: authToken,
-      identity: { name: "Pulse Pocket", uri: "https://usepulse-two.vercel.app" },
+      identity: {
+        name: "Pulse Pocket",
+        uri: "https://usepulse-two.vercel.app",
+      },
     });
 
     const signedTxs = await wallet.signTransactions({
@@ -117,9 +157,7 @@ export async function executeSwap(
 }
 
 /**
- * Convenience wrapper for the narrative-card use case: swap a fixed SOL
- * amount into whatever token a spike is about. Amount is in SOL (not
- * lamports) for readability at the call site.
+ * Swap a fixed SOL amount into the narrative token's mint.
  */
 export async function swapSolForToken(
   authToken: string,

@@ -8,6 +8,7 @@ const MODEL_ROTATION = [
   "meta-llama/llama-3.1-8b-instruct:free",
   "google/gemma-2-9b-it:free",
   "mistralai/mistral-7b-instruct:free",
+  "qwen/qwen-2.5-7b-instruct:free",
 ];
 
 function buildPrompt(spike: Spike): string {
@@ -66,6 +67,9 @@ async function callModel(model: string, prompt: string): Promise<string> {
     headers: {
       Authorization: `Bearer ${config.openRouterApiKey}`,
       "Content-Type": "application/json",
+      // OpenRouter free tier expects these for attribution / routing
+      "HTTP-Referer": "https://usepulse-two.vercel.app",
+      "X-Title": "Pulse Pocket",
     },
     body: JSON.stringify({
       model,
@@ -76,7 +80,8 @@ async function callModel(model: string, prompt: string): Promise<string> {
   });
 
   if (!res.ok) {
-    throw new Error(`OpenRouter (${model}) failed: ${res.status}`);
+    const body = await res.text().catch(() => "");
+    throw new Error(`OpenRouter (${model}) failed: ${res.status} ${body.slice(0, 80)}`);
   }
 
   const data = await res.json();
@@ -103,8 +108,11 @@ export async function generateNarrative(spike: Spike): Promise<Narrative> {
         blurb,
         generatedAt: Date.now(),
       };
-    } catch {
-      // try next model
+    } catch (err) {
+      console.warn(
+        `[openrouter] ${model} failed:`,
+        err instanceof Error ? err.message : err
+      );
     }
   }
 
