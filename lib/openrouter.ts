@@ -3,13 +3,30 @@ import type { Narrative, Spike } from "./types";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-// Free-model rotation — try in order, fall back if rate-limited or down.
+/**
+ * Free-only rotation (Sept 2026 roster).
+ *
+ * 1. `openrouter/free` — OpenRouter's auto-router picks any healthy free model
+ * 2. Explicit free models as fallbacks when the router itself is rate-limited
+ *
+ * Old IDs like llama-3.1-8b-instruct:free / gemma-2-9b-it:free are no longer
+ * on the free tier, which is why earlier rotation always failed.
+ */
 const MODEL_ROTATION = [
-  "meta-llama/llama-3.1-8b-instruct:free",
-  "google/gemma-2-9b-it:free",
-  "mistralai/mistral-7b-instruct:free",
-  "qwen/qwen-2.5-7b-instruct:free",
+  "openrouter/free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "google/gemma-4-31b-it:free",
+  "google/gemma-4-26b-a4b-it:free",
+  "nvidia/nemotron-3.5-lightning:free",
+  "liquid/lfm-2.5-2.6b:free",
+  "nex-agi/nex-n2.5-mini:free",
+  "inclusionai/ling-3.0-flash-sante:free",
+  "poolside/laguna-xs-2.1:free",
+  "cohere/north-mini-code:free",
 ];
+
+// Round-robin start index so successive narratives don't all hammer model[0]
+let rotationOffset = 0;
 
 function buildPrompt(spike: Spike): string {
   const { baseSymbol, quoteSymbol, kind, magnitude, currentSnapshot } = spike;
@@ -37,7 +54,6 @@ function buildHeadline(spike: Spike): string {
   }`;
 }
 
-/** Deterministic blurb so the feed still works when OpenRouter is down. */
 function templateBlurb(spike: Spike): string {
   const { baseSymbol, quoteSymbol, kind, magnitude, currentSnapshot } = spike;
   if (kind === "volume") {
@@ -67,7 +83,6 @@ async function callModel(model: string, prompt: string): Promise<string> {
     headers: {
       Authorization: `Bearer ${config.openRouterApiKey}`,
       "Content-Type": "application/json",
-      // OpenRouter free tier expects these for attribution / routing
       "HTTP-Referer": "https://usepulse-two.vercel.app",
       "X-Title": "Pulse Pocket",
     },
@@ -81,7 +96,9 @@ async function callModel(model: string, prompt: string): Promise<string> {
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`OpenRouter (${model}) failed: ${res.status} ${body.slice(0, 80)}`);
+    throw new Error(
+      `OpenRouter (${model}) failed: ${res.status} ${body.slice(0, 100)}`
+    );
   }
 
   const data = await res.json();
@@ -90,17 +107,26 @@ async function callModel(model: string, prompt: string): Promise<string> {
   return text;
 }
 
+function orderedModels(): string[] {
+  const n = MODEL_ROTATION.length;
+  const start = rotationOffset % n;
+  rotationOffset = (rotationOffset + 1) % n;
+  return [...MODEL_ROTATION.slice(start), ...MODEL_ROTATION.slice(0, start)];
+}
+
 /**
- * Generate a narrative blurb for a spike. Tries free OpenRouter models,
- * then falls back to a template so the feed is never empty on LLM failure.
+ * Generate a narrative blurb using only free OpenRouter models.
+ * Rotates starting model per call; falls back to template if all fail.
  */
 export async function generateNarrative(spike: Spike): Promise<Narrative> {
   const prompt = buildPrompt(spike);
   const headline = buildHeadline(spike);
+  const models = orderedModels();
 
-  for (const model of MODEL_ROTATION) {
+  for (const model of models) {
     try {
       const blurb = await callModel(model, prompt);
+      console.log(`[openrouter] ok via ${model} for ${spike.baseSymbol}`);
       return {
         id: `${spike.pairAddress}-${spike.detectedAt}`,
         spike,
@@ -117,7 +143,7 @@ export async function generateNarrative(spike: Spike): Promise<Narrative> {
   }
 
   console.warn(
-    `[openrouter] All models failed for ${spike.baseSymbol} — using template blurb`
+    `[openrouter] All free models failed for ${spike.baseSymbol} — template blurb`
   );
 
   return {
