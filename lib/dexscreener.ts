@@ -14,6 +14,8 @@ export const WATCHED_PAIR_ADDRESSES: string[] = [
   // Example: SOL/USDC on Raydium — add pair addresses here if you want them
   // always included alongside whatever's auto-discovered.
   // "Cbf...actualPairAddress",
+  "58oQChx4yWmvKwrbHU1nyskZLuszRW4JqzmgxcBaUb1t", // SOL-USDC Raydium
+  "AVs9TA4nWDzfPJE9gGVNJMVhcQy3V9PGazym1QKCK5vT",
 ];
 
 interface DexScreenerPair {
