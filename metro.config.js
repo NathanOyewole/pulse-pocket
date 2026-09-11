@@ -17,8 +17,15 @@ config.resolver.extraNodeModules = {
   ),
 };
 
-// Force Metro to use package "exports"
-config.resolver.unstable_enablePackageExports = true;
+// IMPORTANT: must stay false. @solana/web3.js's dependency chain
+// (rpc-websockets, @noble/hashes) isn't compatible with Metro's strict
+// package.json "exports" resolution yet and crashes the bundler entirely
+// ("TypeError: dependencies is not iterable") when this is true. The
+// mobile-wallet-adapter-protocol "/encoding" subpath issue that this flag
+// was flipped on to fix is instead handled explicitly below via
+// resolveRequest, which runs before Metro's default export-based
+// resolution and doesn't need this flag on to work.
+config.resolver.unstable_enablePackageExports = false;
 
 // Nuclear option – manually resolve the /encoding subpath
 config.resolver.resolveRequest = (context, moduleName, platform) => {
