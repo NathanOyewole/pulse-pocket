@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet } from "react-native";
 import { colors, spacing } from "../constants/theme";
-import type { TokenRisk, RiskLevel } from "../lib/types";
+import type { TokenRisk, RiskLevel, Attention } from "../lib/types";
 
 function levelColor(level: RiskLevel): string {
   if (level === "high") return colors.negative;
@@ -14,16 +14,16 @@ function levelLabel(level: RiskLevel): string {
   return "LOW RISK";
 }
 
+export function compactNumber(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
 function compact(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
   return `$${n.toFixed(0)}`;
-}
-
-function compactCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
 }
 
 function formatLiquidity(n: number | null): string | null {
@@ -31,7 +31,7 @@ function formatLiquidity(n: number | null): string | null {
 }
 
 function formatHolders(n: number | null): string | null {
-  return n != null && n > 0 ? `${compactCount(n)} holders` : null;
+  return n != null && n > 0 ? `${compactNumber(n)} holders` : null;
 }
 
 function formatTop10(pct: number | null): string | null {
@@ -57,27 +57,86 @@ export function riskFlags(risk: TokenRisk): string[] {
   return flags.slice(0, 4);
 }
 
-/**
- * Compact on-chain risk line for a narrative. Renders nothing when the risk
- * data is absent — the feed must never look broken because Birdeye failed.
- */
-export function RiskBadge({ risk }: { risk: TokenRisk | null | undefined }) {
-  if (!risk) return null;
+export function attentionFlags(attention: Attention): string[] {
+  const flags: string[] = [];
+  const push = (s: string | null) => {
+    if (s) flags.push(s);
+  };
 
-  const color = levelColor(risk.level);
-  const flags = riskFlags(risk);
+  push(
+    attention.uniqueWallets1h != null
+      ? `${compactNumber(attention.uniqueWallets1h)} wallets/1h`
+      : null
+  );
+  push(
+    attention.buyerSharePct != null
+      ? `${attention.buyerSharePct.toFixed(0)}% buys`
+      : null
+  );
+  push(
+    attention.tradeCount1h != null
+      ? `${compactNumber(attention.tradeCount1h)} trades/1h`
+      : null
+  );
+  push(
+    attention.boostDeltaLastCycle != null && attention.boostDeltaLastCycle > 0
+      ? `+${attention.boostDeltaLastCycle} boosts`
+      : attention.boostTotal != null && attention.boostTotal > 0
+        ? `${attention.boostTotal} boosts`
+        : null
+  );
+
+  return flags.slice(0, 3);
+}
+
+interface RiskBadgeProps {
+  risk?: TokenRisk | null;
+  attention?: Attention | null;
+}
+
+/**
+ * Compact on-chain footer for a narrative — risk + live attention. Renders
+ * nothing when there's no data: the feed must never look broken because an API
+ * was rate-limited or unkeyed.
+ */
+export function RiskBadge({ risk, attention }: RiskBadgeProps) {
+  if (!risk && !attention) return null;
 
   return (
     <View style={styles.badge}>
-      <View style={styles.levelRow}>
-        <View style={[styles.dot, { backgroundColor: color }]} />
-        <Text style={[styles.levelText, { color }]}>{levelLabel(risk.level)}</Text>
-        {risk.onJupiterStrictList ? (
-          <Text style={styles.strictList}>· on Jupiter strict list</Text>
-        ) : null}
-      </View>
-      {flags.length > 0 ? (
-        <Text style={styles.flags}>{flags.join(" · ")}</Text>
+      {risk ? (
+        <>
+          <View style={styles.levelRow}>
+            <View
+              style={[styles.dot, { backgroundColor: levelColor(risk.level) }]}
+            />
+            <Text style={[styles.levelText, { color: levelColor(risk.level) }]}>
+              {levelLabel(risk.level)}
+            </Text>
+            {risk.onJupiterStrictList ? (
+              <Text style={styles.subtext}>· on Jupiter strict list</Text>
+            ) : null}
+          </View>
+          {riskFlags(risk).length > 0 ? (
+            <Text style={styles.flags}>{riskFlags(risk).join(" · ")}</Text>
+          ) : null}
+        </>
+      ) : null}
+
+      {attention ? (
+        <>
+          <View style={[styles.levelRow, styles.attentionRow]}>
+            <View style={[styles.dot, { backgroundColor: colors.accent }]} />
+            <Text style={[styles.levelText, { color: colors.accent }]}>
+              ACTIVE ATTENTION
+            </Text>
+          </View>
+          {attentionFlags(attention).length > 0 ? (
+            <Text style={styles.flags}>
+              {attentionFlags(attention).join(" · ")}
+            </Text>
+          ) : null}
+        </>
       ) : null}
     </View>
   );
@@ -97,6 +156,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.xs,
   },
+  attentionRow: {
+    marginTop: spacing.xs,
+  },
   dot: {
     width: 8,
     height: 8,
@@ -107,7 +169,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.5,
   },
-  strictList: {
+  subtext: {
     color: colors.text.tertiary,
     fontSize: 11,
   },

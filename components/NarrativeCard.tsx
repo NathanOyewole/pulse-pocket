@@ -150,7 +150,7 @@ export function NarrativeCard({
         </View>
       </View>
 
-      <RiskBadge risk={spike.risk} />
+      <RiskBadge risk={spike.risk} attention={spike.attention} />
 
       <Text style={styles.tapHint}>Tap for details</Text>
 

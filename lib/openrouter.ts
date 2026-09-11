@@ -1,5 +1,5 @@
 import { config } from "./config";
-import type { Narrative, Spike } from "./types";
+import type { Attention, Narrative, Spike } from "./types";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -16,6 +16,33 @@ let rotationOffset = 0;
 /** Once free-models-per-day trips, skip API for the rest of the session. */
 let freeDayQuotaExhausted = false;
 
+/**
+ * One-line summary of the attention-proxy facts, e.g.
+ * "62% of 1h trades are buys, 4.2K unique wallets, +3 boosts".
+ * Empty string when there's nothing real to say (never fabricates).
+ */
+function attentionFacts(attention: Attention | null | undefined): string {
+  if (!attention) return "";
+  const parts: string[] = [];
+  if (attention.buyerSharePct != null) {
+    parts.push(
+      `${attention.buyerSharePct.toFixed(0)}% of 1h trades are buys`
+    );
+  }
+  if (attention.tradeCount1h != null) {
+    parts.push(`${attention.tradeCount1h.toLocaleString()} trades/1h`);
+  }
+  if (attention.uniqueWallets1h != null) {
+    parts.push(
+      `${attention.uniqueWallets1h.toLocaleString()} unique wallets/1h`
+    );
+  }
+  if (attention.boostDeltaLastCycle != null && attention.boostDeltaLastCycle > 0) {
+    parts.push(`+${attention.boostDeltaLastCycle} new DexScreener boosts`);
+  }
+  return parts.length > 0 ? ` ${parts.join(", ")}.` : "";
+}
+
 function buildMessages(spike: Spike): { role: string; content: string }[] {
   const { baseSymbol, quoteSymbol, kind, magnitude, currentSnapshot } = spike;
 
@@ -24,6 +51,8 @@ function buildMessages(spike: Spike): { role: string; content: string }[] {
       ? `1h volume is ${magnitude.toFixed(1)}x its recent baseline`
       : `price moved ${magnitude > 0 ? "+" : ""}${magnitude.toFixed(1)}% recently`;
 
+  const attention = attentionFacts(spike.attention);
+
   const system = `You write ultra-short crypto feed blurbs for a mobile app.
 Rules you MUST follow:
 - Output ONLY the final blurb text. Nothing else.
@@ -31,9 +60,11 @@ Rules you MUST follow:
 - No markdown, no bullet lists, no numbering, no headings.
 - Do NOT show reasoning, analysis steps, or "thinking process".
 - Do NOT quote the instructions or restate the rules.
-- Direct, punchy trader language.`;
+- Direct, punchy trader language.
+- If attention data is present, tie it into the story (people are shifting money
+  there now). Never invent numbers that weren't provided.`;
 
-  const user = `${baseSymbol}/${quoteSymbol} on Solana. Signal: ${factLine}. Price $${currentSnapshot.priceUsd}. 24h change ${currentSnapshot.priceChangeH24}%.
+  const user = `${baseSymbol}/${quoteSymbol} on Solana. Signal: ${factLine}. Price $${currentSnapshot.priceUsd}. 24h change ${currentSnapshot.priceChangeH24}%.${attention}
 
 Write the blurb now:`;
 
@@ -58,20 +89,30 @@ function formatPrice(n: number): string {
 }
 
 function templateBlurb(spike: Spike): string {
-  const { baseSymbol, quoteSymbol, kind, magnitude, currentSnapshot } = spike;
+  const {
+    baseSymbol,
+    quoteSymbol,
+    kind,
+    magnitude,
+    currentSnapshot,
+    attention,
+  } = spike;
+  let body: string;
   if (kind === "volume") {
-    return `${baseSymbol}/${quoteSymbol} just printed ${magnitude.toFixed(
+    body = `${baseSymbol}/${quoteSymbol} just printed ${magnitude.toFixed(
       1
     )}x its recent 1h volume baseline at $${formatPrice(
       currentSnapshot.priceUsd
     )}. Liquidity is moving — watch for follow-through.`;
+  } else {
+    const dir = magnitude > 0 ? "ripped higher" : "sold off";
+    body = `${baseSymbol}/${quoteSymbol} ${dir} ${Math.abs(magnitude).toFixed(
+      1
+    )}% with price at $${formatPrice(currentSnapshot.priceUsd)} (24h ${
+      currentSnapshot.priceChangeH24 >= 0 ? "+" : ""
+    }${currentSnapshot.priceChangeH24.toFixed(1)}%). Momentum is live on Solana.`;
   }
-  const dir = magnitude > 0 ? "ripped higher" : "sold off";
-  return `${baseSymbol}/${quoteSymbol} ${dir} ${Math.abs(magnitude).toFixed(
-    1
-  )}% with price at $${formatPrice(currentSnapshot.priceUsd)} (24h ${
-    currentSnapshot.priceChangeH24 >= 0 ? "+" : ""
-  }${currentSnapshot.priceChangeH24.toFixed(1)}%). Momentum is live on Solana.`;
+  return body + attentionFacts(attention);
 }
 
 function sanitizeBlurb(raw: string): string | null {

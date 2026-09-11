@@ -3,6 +3,7 @@ import { getWatchlistPairs } from "./watchlist";
 import { detectSpikes } from "./spikeDetector";
 import { generateNarrative } from "./openrouter";
 import { getTokenRisk } from "./risks";
+import { getAttention, getBoostSnapshot } from "./attention";
 import type { Narrative, Spike } from "./types";
 
 const MAX_NARRATIVES_PER_CYCLE = 4;
@@ -45,14 +46,26 @@ export async function runPipelineCycle(
   );
   const limited = ranked.slice(0, MAX_NARRATIVES_PER_CYCLE);
 
-  // Rug-screen the movers. Runs in parallel and never fails the cycle: a
-  // rate-limited or missing Birdeye key just means no risk footer on cards.
-  const riskResults = await Promise.allSettled(
-    limited.map((s) => getTokenRisk(s.currentSnapshot.baseMint))
+  // Rug-screen + attention-proxy the movers. Both run in parallel and never
+  // fail the cycle: a rate-limited or missing Birdeye key just means no risk
+  // footer on cards. Attention (boost velocity + buy/sell pressure) is what
+  // lets a narrative say *why attention is arriving*, not just "price moved."
+  const [riskResults, boost] = await Promise.all([
+    Promise.allSettled(
+      limited.map((s) => getTokenRisk(s.currentSnapshot.baseMint))
+    ),
+    getBoostSnapshot().catch(() => null),
+  ]);
+  const attentionResults = await Promise.allSettled(
+    limited.map((s) => getAttention(s.currentSnapshot.baseMint, boost))
   );
   const screened: Spike[] = limited.map((s, i) => ({
     ...s,
     risk: riskResults[i].status === "fulfilled" ? riskResults[i].value : null,
+    attention:
+      attentionResults[i].status === "fulfilled"
+        ? attentionResults[i].value
+        : null,
   }));
 
   const fulfilled: Narrative[] = [];

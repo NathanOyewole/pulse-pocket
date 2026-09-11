@@ -39,6 +39,22 @@ export interface TokenPairSnapshot {
   fetchedAt: number; // unix ms
 }
 
+/**
+ * Attention proxy — the "attention precedes liquidity" signal. Cheap,
+ * real-time measures of *forward* attention, not price: DexScreener boost
+ * velocity (people pay real money to boost a token they expect to move) plus
+ * live Birdeye buy/sell pressure. Null fields are best-effort.
+ */
+export interface Attention {
+  mint: string;
+  buyerSharePct: number | null; // buy1h / (buy1h+sell1h) — pure buying pressure
+  tradeCount1h: number | null;
+  uniqueWallets1h: number | null;
+  boostDeltaLastCycle: number | null; // new boosts since the pipeline's last read
+  boostTotal: number | null; // current number of active boosts
+  sampledAt: number; // unix ms
+}
+
 export interface Spike {
   pairAddress: string;
   baseSymbol: string;
@@ -49,6 +65,7 @@ export interface Spike {
   baselineVolumeH1: number;
   detectedAt: number;
   risk?: TokenRisk | null; // populated by the pipeline's Birdeye rug-screen
+  attention?: Attention | null; // populated by the pipeline's attention proxy
 }
 
 export interface Narrative {
