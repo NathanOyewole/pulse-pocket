@@ -5,12 +5,11 @@ import {
 import { VersionedTransaction } from "@solana/web3.js";
 import { getConnection } from "./wallet";
 
-// quote-api.jup.ag/v6 was fully deprecated Oct 2025.
-// lite-api works without an API key (rate-limited); for production scale
-// get a key at https://portal.jup.ag and switch base to api.jup.ag + x-api-key.
-const JUPITER_BASE = "https://lite-api.jup.ag/swap/v1";
-const JUPITER_QUOTE_URL = `${JUPITER_BASE}/quote`;
-const JUPITER_SWAP_URL = `${JUPITER_BASE}/swap`;
+// Try multiple bases — some networks block one hostname.
+const JUPITER_BASES = [
+  "https://lite-api.jup.ag/swap/v1",
+  "https://api.jup.ag/swap/v1",
+];
 
 export const MINTS = {
   SOL: "So11111111111111111111111111111111111111112",
@@ -26,18 +25,34 @@ export interface SwapQuote {
   priceImpactPct: string;
 }
 
-function networkErrorMessage(err: unknown, context: string): Error {
+function isNetworkFailure(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
-  if (
+  return (
     msg.includes("Network request failed") ||
     msg.includes("Failed to fetch") ||
-    msg.includes("NetworkError")
-  ) {
-    return new Error(
-      `${context}: network failed. Check internet / Jupiter API status.`
-    );
+    msg.includes("NetworkError") ||
+    msg.includes("network failed")
+  );
+}
+
+async function fetchWithFallback(
+  pathAndQuery: string,
+  init?: RequestInit
+): Promise<Response> {
+  let lastErr: unknown;
+  for (const base of JUPITER_BASES) {
+    try {
+      const res = await fetch(`${base}${pathAndQuery}`, init);
+      // Accept any HTTP response from a reachable host; caller checks ok.
+      return res;
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[jupiter] ${base} unreachable:`, err);
+    }
   }
-  return err instanceof Error ? err : new Error(msg);
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("All Jupiter endpoints unreachable");
 }
 
 /**
@@ -59,15 +74,20 @@ export async function getSwapQuote(
 
   let res: Response;
   try {
-    res = await fetch(`${JUPITER_QUOTE_URL}?${params}`);
+    res = await fetchWithFallback(`/quote?${params}`);
   } catch (err) {
-    throw networkErrorMessage(err, "Jupiter quote");
+    if (isNetworkFailure(err)) {
+      throw new Error(
+        "Jupiter quote: network failed. Check phone data/Wi‑Fi or try again."
+      );
+    }
+    throw err instanceof Error ? err : new Error(String(err));
   }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(
-      `Jupiter quote failed: ${res.status} ${res.statusText}${body ? ` — ${body.slice(0, 120)}` : ""}`
+      `Jupiter quote failed: ${res.status}${body ? ` — ${body.slice(0, 120)}` : ""}`
     );
   }
 
@@ -100,7 +120,7 @@ export async function executeSwap(
 ): Promise<string> {
   let swapRes: Response;
   try {
-    swapRes = await fetch(JUPITER_SWAP_URL, {
+    swapRes = await fetchWithFallback(`/swap`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -112,7 +132,12 @@ export async function executeSwap(
       }),
     });
   } catch (err) {
-    throw networkErrorMessage(err, "Jupiter swap build");
+    if (isNetworkFailure(err)) {
+      throw new Error(
+        "Jupiter swap: network failed. Check phone data/Wi‑Fi or try again."
+      );
+    }
+    throw err instanceof Error ? err : new Error(String(err));
   }
 
   if (!swapRes.ok) {

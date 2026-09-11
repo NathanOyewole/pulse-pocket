@@ -3,10 +3,6 @@ import type { Narrative, Spike } from "./types";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-/**
- * Prefer models that have been answering cleanly on free tier.
- * Avoid dumping 8 parallel retries across 10 models (burns free-models-per-min).
- */
 const MODEL_ROTATION = [
   "nvidia/nemotron-3.5-lightning:free",
   "nvidia/nemotron-3-super-120b-a12b:free",
@@ -16,6 +12,9 @@ const MODEL_ROTATION = [
 ];
 
 let rotationOffset = 0;
+
+/** Once free-models-per-day trips, skip API for the rest of the session. */
+let freeDayQuotaExhausted = false;
 
 function buildMessages(spike: Spike): { role: string; content: string }[] {
   const { baseSymbol, quoteSymbol, kind, magnitude, currentSnapshot } = spike;
@@ -52,6 +51,12 @@ function buildHeadline(spike: Spike): string {
   }`;
 }
 
+function formatPrice(n: number): string {
+  if (n >= 1) return n.toFixed(2);
+  if (n >= 0.01) return n.toFixed(4);
+  return n.toFixed(6);
+}
+
 function templateBlurb(spike: Spike): string {
   const { baseSymbol, quoteSymbol, kind, magnitude, currentSnapshot } = spike;
   if (kind === "volume") {
@@ -69,21 +74,10 @@ function templateBlurb(spike: Spike): string {
   }${currentSnapshot.priceChangeH24.toFixed(1)}%). Momentum is live on Solana.`;
 }
 
-function formatPrice(n: number): string {
-  if (n >= 1) return n.toFixed(2);
-  if (n >= 0.01) return n.toFixed(4);
-  return n.toFixed(6);
-}
-
-/**
- * Free reasoning models often dump chain-of-thought. Strip that and keep only
- * a usable 1–2 sentence blurb. Returns null if nothing clean remains.
- */
 function sanitizeBlurb(raw: string): string | null {
   let text = raw.trim();
   if (!text) return null;
 
-  // Strip common CoT / instruction echo patterns
   const junkPatterns = [
     /here's a thinking process[:\s]*/i,
     /thinking process[:\s]*/i,
@@ -93,26 +87,23 @@ function sanitizeBlurb(raw: string): string | null {
     /we need 1-2 sentences[^.]*\./i,
     /rules you must follow[\s\S]*/i,
     /do not (show|use|include)[^.]*\./gi,
-    /\*\*[^*]+\*\*/g, // bold markdown
-    /^#+\s+.+$/gm, // headings
-    /^\s*[-*]\s+/gm, // bullets
-    /^\s*\d+[.)]\s+/gm, // numbered lists
+    /\*\*[^*]+\*\*/g,
+    /^#+\s+.+$/gm,
+    /^\s*[-*]\s+/gm,
+    /^\s*\d+[.)]\s+/gm,
   ];
 
   for (const p of junkPatterns) {
     text = text.replace(p, " ");
   }
 
-  // If model embedded a quoted final line, prefer that
   const quoted = text.match(/["“]([^"”]{20,200})["”]/);
   if (quoted?.[1] && !/thinking|analyze|request/i.test(quoted[1])) {
     text = quoted[1];
   }
 
-  // Collapse whitespace
   text = text.replace(/\s+/g, " ").trim();
 
-  // Drop if still looks like meta-reasoning
   if (
     /thinking process|analyze the request|token pair:\s*|signal:\s*|format:\s*|length:\s*/i.test(
       text
@@ -121,22 +112,27 @@ function sanitizeBlurb(raw: string): string | null {
     return null;
   }
 
-  // Take first 1–2 sentences
   const sentences = text.match(/[^.!?]+[.!?]+/g);
   if (sentences && sentences.length > 0) {
     text = sentences.slice(0, 2).join(" ").trim();
   }
 
-  // Too short or still junk
   if (text.length < 24 || text.length > 280) return null;
   if (/^\s*(output|blurb|response)\s*:/i.test(text)) return null;
 
   return text;
 }
 
+function isDailyQuotaError(msg: string): boolean {
+  return /free-models-per-day|free models per day|1000 free/i.test(msg);
+}
+
 async function callModel(model: string, spike: Spike): Promise<string> {
   if (!config.openRouterApiKey) {
     throw new Error("OpenRouter API key missing");
+  }
+  if (freeDayQuotaExhausted) {
+    throw new Error("OpenRouter free daily quota exhausted");
   }
 
   const res = await fetch(OPENROUTER_URL, {
@@ -157,6 +153,12 @@ async function callModel(model: string, spike: Spike): Promise<string> {
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
+    if (isDailyQuotaError(body) || isDailyQuotaError(String(res.status))) {
+      freeDayQuotaExhausted = true;
+      throw new Error(
+        "OpenRouter free daily limit hit — using templates until reset or credits"
+      );
+    }
     throw new Error(
       `OpenRouter (${model}) failed: ${res.status} ${body.slice(0, 100)}`
     );
@@ -180,11 +182,20 @@ function orderedModels(): string[] {
   return [...MODEL_ROTATION.slice(start), ...MODEL_ROTATION.slice(0, start)];
 }
 
-/**
- * Generate a clean 1–2 sentence narrative using free OpenRouter models only.
- */
 export async function generateNarrative(spike: Spike): Promise<Narrative> {
   const headline = buildHeadline(spike);
+
+  // Don't burn more failed requests once the day quota is gone
+  if (freeDayQuotaExhausted || !config.openRouterApiKey) {
+    return {
+      id: `${spike.pairAddress}-${spike.detectedAt}`,
+      spike,
+      headline,
+      blurb: templateBlurb(spike),
+      generatedAt: Date.now(),
+    };
+  }
+
   const models = orderedModels();
 
   for (const model of models) {
@@ -199,16 +210,14 @@ export async function generateNarrative(spike: Spike): Promise<Narrative> {
         generatedAt: Date.now(),
       };
     } catch (err) {
-      console.warn(
-        `[openrouter] ${model} failed:`,
-        err instanceof Error ? err.message : err
-      );
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[openrouter] ${model} failed:`, msg);
+      if (freeDayQuotaExhausted || isDailyQuotaError(msg)) {
+        freeDayQuotaExhausted = true;
+        break;
+      }
     }
   }
-
-  console.warn(
-    `[openrouter] All free models failed for ${spike.baseSymbol} — template blurb`
-  );
 
   return {
     id: `${spike.pairAddress}-${spike.detectedAt}`,
