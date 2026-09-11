@@ -14,13 +14,11 @@ import { colors, spacing } from "../constants/theme";
 import { runPipelineCycle } from "../lib/pipeline";
 import type { Narrative } from "../lib/types";
 import { useWallet } from "../hooks/useWallet";
+import { useSettings } from "../hooks/useSettings";
 import { NarrativeCard } from "../components/NarrativeCard";
 import { hasSeenWelcome } from "../lib/onboarding";
 import { notifyNarrative } from "../lib/notifications";
 
-// Poll for new narratives every 90s while the feed is open. Tuned loose
-// to avoid hammering the free-tier APIs — tighten once you've confirmed
-// rate limits are comfortable.
 const POLL_INTERVAL_MS = 90_000;
 
 export default function HomeScreen() {
@@ -32,12 +30,10 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
   const [lastRun, setLastRun] = useState<number | null>(null);
   const wallet = useWallet();
+  const { notificationsEnabled } = useSettings();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isFirstCycleRef = useRef(true);
 
-  // Redirect to the welcome screen on first-ever launch. Everything below
-  // (data polling, wallet restore) is skipped while this check is pending
-  // so we don't flash the feed before bouncing to welcome.
   useEffect(() => {
     hasSeenWelcome().then((seen) => {
       if (!seen) {
@@ -48,41 +44,39 @@ export default function HomeScreen() {
     });
   }, [router]);
 
-  const runCycle = useCallback(async (isManualRefresh = false) => {
-    if (isManualRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError(null);
+  const runCycle = useCallback(
+    async (isManualRefresh = false) => {
+      if (isManualRefresh) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
 
-    try {
-      const results = await runPipelineCycle();
+      try {
+        const results = await runPipelineCycle();
 
-      // Skip notifying on the first cycle after app open — otherwise a
-      // cold start with several pre-existing spikes dumps a burst of
-      // notifications the instant the feed loads.
-      if (!isFirstCycleRef.current) {
-        for (const narrative of results) {
-          notifyNarrative(narrative).catch(() => {});
+        if (!isFirstCycleRef.current && notificationsEnabled) {
+          for (const narrative of results) {
+            notifyNarrative(narrative).catch(() => {});
+          }
         }
-      }
-      isFirstCycleRef.current = false;
+        isFirstCycleRef.current = false;
 
-      setNarratives((prev) => [...results, ...prev].slice(0, 50));
-      setLastRun(Date.now());
-      if (results.length === 0 && narratives.length === 0) {
-        setError("No spikes detected yet. Feed updates automatically.");
+        setNarratives((prev) => [...results, ...prev].slice(0, 50));
+        setLastRun(Date.now());
+        if (results.length === 0 && narratives.length === 0) {
+          setError("No spikes detected yet. Feed updates automatically.");
+        }
+      } catch (err: any) {
+        setError(err?.message ?? String(err));
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-    } catch (err: any) {
-      setError(err?.message ?? String(err));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [narratives.length]);
+    },
+    [narratives.length, notificationsEnabled]
+  );
 
   useEffect(() => {
     if (checkingOnboarding) return;
-    // Fetch-on-mount + poll pattern. runCycle is async, so its setState
-    // calls happen after an await, not synchronously during this effect.
     runCycle();
     pollRef.current = setInterval(() => runCycle(), POLL_INTERVAL_MS);
     return () => {
@@ -92,7 +86,9 @@ export default function HomeScreen() {
   }, [checkingOnboarding]);
 
   if (checkingOnboarding) {
-    return <View style={[styles.container, { backgroundColor: colors.background }]} />;
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]} />
+    );
   }
 
   return (
@@ -101,8 +97,15 @@ export default function HomeScreen() {
         <View style={styles.liveDot} />
         <Text style={styles.walletBarTitle}>PULSE POCKET</Text>
         <View style={{ flex: 1 }} />
+        <Pressable
+          onPress={() => router.push("/settings")}
+          style={styles.gearBtn}
+          hitSlop={8}
+        >
+          <Text style={styles.gearText}>⚙</Text>
+        </Pressable>
         {wallet.connected && wallet.pubkey ? (
-          <Pressable onPress={wallet.disconnect} style={styles.walletPill}>
+          <Pressable onPress={() => router.push("/settings")} style={styles.walletPill}>
             <Text style={styles.walletPillText} numberOfLines={1}>
               {wallet.skrDomain
                 ? wallet.skrDomain
@@ -195,6 +198,20 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 13,
     letterSpacing: 0.5,
+  },
+  gearBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceElevated,
+  },
+  gearText: {
+    color: colors.text.secondary,
+    fontSize: 16,
   },
   walletPill: {
     backgroundColor: colors.surfaceElevated,

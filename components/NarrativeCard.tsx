@@ -11,8 +11,7 @@ import { colors, spacing } from "../constants/theme";
 import type { Narrative } from "../lib/types";
 import { swapSolForToken } from "../lib/jupiter";
 import { friendlyError } from "../lib/errors";
-
-const SWAP_AMOUNT_SOL = 0.02;
+import { useSettings } from "../hooks/useSettings";
 
 interface NarrativeCardProps {
   narrative: Narrative;
@@ -30,6 +29,7 @@ export function NarrativeCard({
   authToken,
 }: NarrativeCardProps) {
   const router = useRouter();
+  const { swapAmountSol } = useSettings();
   const [swapStatus, setSwapStatus] = useState<SwapStatus>("idle");
   const [swapError, setSwapError] = useState<string | null>(null);
   const [txSignature, setTxSignature] = useState<string | null>(null);
@@ -63,7 +63,7 @@ export function NarrativeCard({
         authToken,
         walletPubkey,
         spike.currentSnapshot.baseMint,
-        SWAP_AMOUNT_SOL
+        swapAmountSol
       );
       setTxSignature(signature);
       setSwapStatus("success");
@@ -141,7 +141,6 @@ export function NarrativeCard({
               styles.swapButtonDisabled,
           ]}
           onPress={(e) => {
-            // Don’t open detail when tapping swap
             e?.stopPropagation?.();
             handleSwap();
           }}
@@ -152,7 +151,7 @@ export function NarrativeCard({
           ) : (
             <Text style={styles.swapButtonText}>
               {walletConnected
-                ? `Swap ${SWAP_AMOUNT_SOL} SOL → ${spike.baseSymbol}`
+                ? `Swap ${swapAmountSol} SOL → ${spike.baseSymbol}`
                 : "Connect wallet to act on this"}
             </Text>
           )}

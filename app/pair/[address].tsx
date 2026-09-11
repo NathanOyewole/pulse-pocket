@@ -14,10 +14,9 @@ import { colors, spacing } from "../../constants/theme";
 import { fetchPairSnapshots } from "../../lib/dexscreener";
 import type { TokenPairSnapshot } from "../../lib/types";
 import { useWallet } from "../../hooks/useWallet";
+import { useSettings } from "../../hooks/useSettings";
 import { swapSolForToken } from "../../lib/jupiter";
 import { friendlyError } from "../../lib/errors";
-
-const SWAP_AMOUNT_SOL = 0.02;
 
 function formatPrice(n: number): string {
   if (!Number.isFinite(n)) return "—";
@@ -59,6 +58,7 @@ export default function PairDetailScreen() {
     : params.magnitude;
 
   const wallet = useWallet();
+  const { swapAmountSol } = useSettings();
 
   const [snapshot, setSnapshot] = useState<TokenPairSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,7 +101,7 @@ export default function PairDetailScreen() {
         wallet.authToken,
         wallet.pubkey,
         snapshot.baseMint,
-        SWAP_AMOUNT_SOL
+        swapAmountSol
       );
       setTxSignature(sig);
       setSwapStatus("success");
@@ -237,7 +237,7 @@ export default function PairDetailScreen() {
                 ) : (
                   <Text style={styles.swapButtonText}>
                     {wallet.connected
-                      ? `Swap ${SWAP_AMOUNT_SOL} SOL → ${snapshot.baseSymbol}`
+                      ? `Swap ${swapAmountSol} SOL → ${snapshot.baseSymbol}`
                       : "Connect wallet on feed to swap"}
                   </Text>
                 )}
