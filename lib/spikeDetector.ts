@@ -3,14 +3,17 @@ import type { Spike, TokenPairSnapshot } from "./types";
 
 // How many past snapshots per pair we keep to compute a rolling volume baseline.
 const HISTORY_LENGTH = 12;
-const STORAGE_KEY = "pulsepocket:snapshotHistory";
-
+const STORAGE_KEY = "pulsepocket:snapshotHistory"
 // DexScreener already computes 1h / 24h % change server-side — those do NOT
 // need local history. Volume spikes still need a short local baseline.
 const VOLUME_SPIKE_MULTIPLIER = 2;
 const MIN_HISTORY_FOR_VOLUME = 1;
 const PRICE_SPIKE_PERCENT_H1 = 8;
 const PRICE_SPIKE_PERCENT_H24 = 25;
+// Thresholds — tune these once you see real data. Start loose so you
+// actually see signals during testing, then tighten to cut noise.
+const VOLUME_SPIKE_MULTIPLIER = 1.2; // current h1 volume vs. avg of history
+const PRICE_SPIKE_PERCENT = 3; // abs % change in h1 to count as a spike
 
 type HistoryMap = Record<string, TokenPairSnapshot[]>;
 
@@ -54,7 +57,6 @@ export async function detectSpikes(
   for (const snapshot of snapshots) {
     const pastSnapshots = history[snapshot.pairAddress] ?? [];
     const baselineVolumeH1 = average(pastSnapshots.map((s) => s.volumeH1));
-
     // Price (1h) — available immediately from DexScreener
     if (Math.abs(snapshot.priceChangeH1) >= PRICE_SPIKE_PERCENT_H1) {
       consider({
@@ -99,6 +101,41 @@ export async function detectSpikes(
         baselineVolumeH1,
         detectedAt: Date.now(),
       });
+    if (pastSnapshots.length >= 1) {
+      const baselineVolumeH1 = average(
+        pastSnapshots.map((s) => s.volumeH1)
+      );
+
+      // Volume spike check
+      if (
+        baselineVolumeH1 > 0 &&
+        snapshot.volumeH1 >= baselineVolumeH1 * VOLUME_SPIKE_MULTIPLIER
+      ) {
+        spikes.push({
+          pairAddress: snapshot.pairAddress,
+          baseSymbol: snapshot.baseSymbol,
+          quoteSymbol: snapshot.quoteSymbol,
+          kind: "volume",
+          magnitude: snapshot.volumeH1 / baselineVolumeH1,
+          currentSnapshot: snapshot,
+          baselineVolumeH1,
+          detectedAt: Date.now(),
+        });
+      }
+
+      // Price spike check
+      if (Math.abs(snapshot.priceChangeH1) >= PRICE_SPIKE_PERCENT) {
+        spikes.push({
+          pairAddress: snapshot.pairAddress,
+          baseSymbol: snapshot.baseSymbol,
+          quoteSymbol: snapshot.quoteSymbol,
+          kind: "price",
+          magnitude: snapshot.priceChangeH1,
+          currentSnapshot: snapshot,
+          baselineVolumeH1,
+          detectedAt: Date.now(),
+        });
+      }
     }
 
     const updated = [...pastSnapshots, snapshot].slice(-HISTORY_LENGTH);
