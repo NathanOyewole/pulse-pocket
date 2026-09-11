@@ -12,6 +12,7 @@ import type { Narrative } from "../lib/types";
 import { swapSolForToken } from "../lib/jupiter";
 import { friendlyError } from "../lib/errors";
 import { useSettings } from "../hooks/useSettings";
+import { TokenLogo } from "./TokenLogo";
 
 interface NarrativeCardProps {
   narrative: Narrative;
@@ -48,6 +49,7 @@ export function NarrativeCard({
         blurb: narrative.blurb,
         kind: spike.kind,
         magnitude: String(spike.magnitude),
+        imageUrl: spike.currentSnapshot.imageUrl ?? "",
       },
     });
   }
@@ -76,20 +78,27 @@ export function NarrativeCard({
   return (
     <Pressable style={styles.card} onPress={openDetail}>
       <View style={styles.topRow}>
-        <View
-          style={[
-            styles.kindBadge,
-            { borderColor: isPositive ? colors.positive : colors.negative },
-          ]}
-        >
-          <Text
+        <View style={styles.identity}>
+          <TokenLogo
+            uri={spike.currentSnapshot.imageUrl}
+            symbol={spike.baseSymbol}
+            size={36}
+          />
+          <View
             style={[
-              styles.kindBadgeText,
-              { color: isPositive ? colors.positive : colors.negative },
+              styles.kindBadge,
+              { borderColor: isPositive ? colors.positive : colors.negative },
             ]}
           >
-            {spike.kind === "volume" ? "VOLUME SPIKE" : "PRICE MOVE"}
-          </Text>
+            <Text
+              style={[
+                styles.kindBadgeText,
+                { color: isPositive ? colors.positive : colors.negative },
+              ]}
+            >
+              {spike.kind === "volume" ? "VOLUME SPIKE" : "PRICE MOVE"}
+            </Text>
+          </View>
         </View>
         <Text style={styles.timestamp}>
           {new Date(narrative.generatedAt).toLocaleTimeString()}
@@ -179,6 +188,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: spacing.sm,
+  },
+  identity: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
   kindBadge: {
     borderWidth: 1,

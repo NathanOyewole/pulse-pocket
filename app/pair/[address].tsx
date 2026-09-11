@@ -17,6 +17,7 @@ import { useWallet } from "../../hooks/useWallet";
 import { useSettings } from "../../hooks/useSettings";
 import { swapSolForToken } from "../../lib/jupiter";
 import { friendlyError } from "../../lib/errors";
+import { TokenLogo } from "../../components/TokenLogo";
 
 function formatPrice(n: number): string {
   if (!Number.isFinite(n)) return "—";
@@ -43,6 +44,7 @@ export default function PairDetailScreen() {
     blurb?: string;
     kind?: string;
     magnitude?: string;
+    imageUrl?: string;
   }>();
 
   const address = Array.isArray(params.address)
@@ -56,6 +58,9 @@ export default function PairDetailScreen() {
   const magnitude = Array.isArray(params.magnitude)
     ? params.magnitude[0]
     : params.magnitude;
+  const paramImage = Array.isArray(params.imageUrl)
+    ? params.imageUrl[0]
+    : params.imageUrl;
 
   const wallet = useWallet();
   const { swapAmountSol } = useSettings();
@@ -114,6 +119,8 @@ export default function PairDetailScreen() {
   const title = snapshot
     ? `${snapshot.baseSymbol}/${snapshot.quoteSymbol}`
     : "Pair";
+  const logoUri = snapshot?.imageUrl || paramImage || null;
+  const logoSymbol = snapshot?.baseSymbol ?? "?";
 
   return (
     <>
@@ -135,6 +142,19 @@ export default function PairDetailScreen() {
           <Text style={styles.errorText}>{error}</Text>
         ) : snapshot ? (
           <>
+            <View style={styles.hero}>
+              <TokenLogo uri={logoUri} symbol={logoSymbol} size={56} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pairName}>
+                  {snapshot.baseSymbol}/{snapshot.quoteSymbol}
+                </Text>
+                <Text style={styles.priceLabel}>PRICE USD</Text>
+                <Text style={styles.priceValue}>
+                  ${formatPrice(snapshot.priceUsd)}
+                </Text>
+              </View>
+            </View>
+
             {(headline || blurb) && (
               <View style={styles.signalCard}>
                 {kind ? (
@@ -156,31 +176,25 @@ export default function PairDetailScreen() {
               </View>
             )}
 
-            <View style={styles.priceBlock}>
-              <Text style={styles.priceLabel}>PRICE USD</Text>
-              <Text style={styles.priceValue}>
-                ${formatPrice(snapshot.priceUsd)}
+            <View style={styles.pctRow}>
+              <Text
+                style={[
+                  styles.pct,
+                  { color: pctColor(snapshot.priceChangeH1) },
+                ]}
+              >
+                1h {snapshot.priceChangeH1 >= 0 ? "+" : ""}
+                {snapshot.priceChangeH1.toFixed(1)}%
               </Text>
-              <View style={styles.pctRow}>
-                <Text
-                  style={[
-                    styles.pct,
-                    { color: pctColor(snapshot.priceChangeH1) },
-                  ]}
-                >
-                  1h {snapshot.priceChangeH1 >= 0 ? "+" : ""}
-                  {snapshot.priceChangeH1.toFixed(1)}%
-                </Text>
-                <Text
-                  style={[
-                    styles.pct,
-                    { color: pctColor(snapshot.priceChangeH24) },
-                  ]}
-                >
-                  24h {snapshot.priceChangeH24 >= 0 ? "+" : ""}
-                  {snapshot.priceChangeH24.toFixed(1)}%
-                </Text>
-              </View>
+              <Text
+                style={[
+                  styles.pct,
+                  { color: pctColor(snapshot.priceChangeH24) },
+                ]}
+              >
+                24h {snapshot.priceChangeH24 >= 0 ? "+" : ""}
+                {snapshot.priceChangeH24.toFixed(1)}%
+              </Text>
             </View>
 
             <View style={styles.grid}>
@@ -275,6 +289,18 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingBottom: spacing.xxl,
   },
+  hero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  pairName: {
+    color: colors.text.secondary,
+    fontSize: 13,
+    fontWeight: "600",
+    marginBottom: 2,
+  },
   signalCard: {
     backgroundColor: colors.surfaceElevated,
     borderWidth: 1,
@@ -301,24 +327,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  priceBlock: {
-    marginBottom: spacing.lg,
-  },
   priceLabel: {
     color: colors.text.tertiary,
     fontSize: 11,
     letterSpacing: 0.5,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   priceValue: {
     color: colors.text.primary,
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: "700",
   },
   pctRow: {
     flexDirection: "row",
     gap: spacing.lg,
-    marginTop: spacing.sm,
+    marginBottom: spacing.lg,
   },
   pct: {
     fontSize: 14,

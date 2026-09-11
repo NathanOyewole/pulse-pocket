@@ -1,21 +1,11 @@
 import type { TokenPairSnapshot } from "./types";
 
-// DexScreener public API — no auth required.
-// Docs: https://docs.dexscreener.com/api/reference
-
 const BASE_URL = "https://api.dexscreener.com";
 
-// Manual seed pairs always tracked alongside auto-discovered boosted tokens.
-// Addresses are case-sensitive base58 — verify on DexScreener if a pair returns null.
 export const WATCHED_PAIR_ADDRESSES: string[] = [
-  // SOL/USDC Raydium (highest-liquidity SOL pair)
   "58oQChx4yWmvKdwLLZzBi4ChoCc2fqCUWBkwMihLYQo2",
-  // SOL/USDC Orca Whirlpool
   "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
-  // Example: SOL/USDC on Raydium — add pair addresses here if you want them
-  // always included alongside whatever's auto-discovered.
-  // "Cbf...actualPairAddress",
-  "58oQChx4yWmvKwrbHU1nyskZLuszRW4JqzmgxcBaUb1t", // SOL-USDC Raydium
+  "58oQChx4yWmvKwrbHU1nyskZLuszRW4JqzmgxcBaUb1t",
   "AVs9TA4nWDzfPJE9gGVNJMVhcQy3V9PGazym1QKCK5vT",
   "GYHPVwni3ucwizy9BM4TzTMw3PtSgxm5RRYvL8Ecpump",
   "BifUDWQFpbTrSxYXBnqCpAVYgcyQGzHzJk2MDmeM2Gyv",
@@ -30,6 +20,7 @@ interface DexScreenerPair {
   priceChange: { h1: number; h24: number };
   liquidity?: { usd: number };
   chainId?: string;
+  info?: { imageUrl?: string };
 }
 
 interface DexScreenerPairsResponse {
@@ -49,6 +40,7 @@ function toSnapshot(pair: DexScreenerPair): TokenPairSnapshot {
     priceChangeH1: pair.priceChange?.h1 ?? 0,
     priceChangeH24: pair.priceChange?.h24 ?? 0,
     liquidityUsd: pair.liquidity?.usd ?? 0,
+    imageUrl: pair.info?.imageUrl ?? null,
     fetchedAt: Date.now(),
   };
 }
@@ -58,10 +50,6 @@ interface DexScreenerBoostEntry {
   tokenAddress: string;
 }
 
-/**
- * Fetches currently-boosted Solana tokens from DexScreener's public boost
- * feeds. Combines "latest" and "top" and dedupes.
- */
 export async function fetchBoostedSolanaTokenAddresses(): Promise<string[]> {
   const [latestRes, topRes] = await Promise.all([
     fetch(`${BASE_URL}/token-boosts/latest/v1`),
@@ -83,9 +71,6 @@ export async function fetchBoostedSolanaTokenAddresses(): Promise<string[]> {
   return Array.from(addresses);
 }
 
-/**
- * Resolves token mints to their highest-liquidity Solana pair each.
- */
 export async function resolveTokensToTopPairs(
   tokenAddresses: string[]
 ): Promise<TokenPairSnapshot[]> {
@@ -124,9 +109,6 @@ export async function resolveTokensToTopPairs(
   return Array.from(bestPairByToken.values());
 }
 
-/**
- * Fetch current snapshots for Solana pair addresses (up to 30 per request).
- */
 export async function fetchPairSnapshots(
   pairAddresses: string[]
 ): Promise<TokenPairSnapshot[]> {
@@ -158,9 +140,6 @@ export async function fetchPairSnapshots(
   return results;
 }
 
-/**
- * Search DexScreener for Solana pairs matching a query.
- */
 export async function searchPairs(query: string): Promise<TokenPairSnapshot[]> {
   const url = `${BASE_URL}/latest/dex/search?q=${encodeURIComponent(query)}`;
   const res = await fetch(url);

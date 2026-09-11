@@ -12,6 +12,7 @@ export interface TokenPairSnapshot {
   priceChangeH1: number;
   priceChangeH24: number;
   liquidityUsd: number;
+  imageUrl: string | null;
   fetchedAt: number; // unix ms
 }
 
