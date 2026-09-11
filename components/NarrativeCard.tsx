@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import type { Narrative } from "../lib/types";
 import { swapSolForToken } from "../lib/jupiter";
 import { friendlyError } from "../lib/errors";
 import { useSettings } from "../hooks/useSettings";
+import { useAutoClearError } from "../hooks/useAutoClearError";
 import { TokenLogo } from "./TokenLogo";
 
 interface NarrativeCardProps {
@@ -19,6 +20,7 @@ interface NarrativeCardProps {
   walletConnected: boolean;
   walletPubkey: string | null;
   authToken: string | null;
+  errorResetKey?: number;
 }
 
 type SwapStatus = "idle" | "pending" | "success" | "error";
@@ -28,6 +30,7 @@ export function NarrativeCard({
   walletConnected,
   walletPubkey,
   authToken,
+  errorResetKey = 0,
 }: NarrativeCardProps) {
   const router = useRouter();
   const { swapAmountSol } = useSettings();
@@ -37,6 +40,17 @@ export function NarrativeCard({
 
   const { spike } = narrative;
   const isPositive = spike.kind === "price" ? spike.magnitude > 0 : true;
+
+  const clearSwapError = useCallback(() => {
+    setSwapError(null);
+    setSwapStatus((s) => (s === "error" ? "idle" : s));
+  }, []);
+
+  useAutoClearError(swapStatus === "error", clearSwapError);
+
+  useEffect(() => {
+    clearSwapError();
+  }, [errorResetKey, clearSwapError]);
 
   function openDetail() {
     const address = spike.pairAddress;

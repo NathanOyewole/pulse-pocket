@@ -17,6 +17,7 @@ import { useWallet } from "../../hooks/useWallet";
 import { useSettings } from "../../hooks/useSettings";
 import { swapSolForToken } from "../../lib/jupiter";
 import { friendlyError } from "../../lib/errors";
+import { useAutoClearError } from "../../hooks/useAutoClearError";
 import { TokenLogo } from "../../components/TokenLogo";
 
 function formatPrice(n: number): string {
@@ -74,10 +75,21 @@ export default function PairDetailScreen() {
   const [swapError, setSwapError] = useState<string | null>(null);
   const [txSignature, setTxSignature] = useState<string | null>(null);
 
+  const clearSwapError = useCallback(() => {
+    setSwapError(null);
+    setSwapStatus((s) => (s === "error" ? "idle" : s));
+  }, []);
+  useAutoClearError(swapStatus === "error", clearSwapError);
+
+  const clearLoadError = useCallback(() => setError(null), []);
+  useAutoClearError(!!error && !!snapshot, clearLoadError);
+
   const load = useCallback(async () => {
     if (!address) return;
     setLoading(true);
     setError(null);
+    setSwapError(null);
+    setSwapStatus((s) => (s === "error" ? "idle" : s));
     try {
       const rows = await fetchPairSnapshots([address]);
       if (!rows.length) {

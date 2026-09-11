@@ -15,9 +15,11 @@ import { runPipelineCycle } from "../lib/pipeline";
 import type { Narrative } from "../lib/types";
 import { useWallet } from "../hooks/useWallet";
 import { useSettings } from "../hooks/useSettings";
+import { useAutoClearError } from "../hooks/useAutoClearError";
 import { NarrativeCard } from "../components/NarrativeCard";
 import { hasSeenWelcome } from "../lib/onboarding";
 import { notifyNarrative } from "../lib/notifications";
+import { friendlyError } from "../lib/errors";
 
 const POLL_INTERVAL_MS = 90_000;
 
@@ -28,11 +30,16 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emptyHint, setEmptyHint] = useState<string | null>(null);
   const [lastRun, setLastRun] = useState<number | null>(null);
+  const [errorResetKey, setErrorResetKey] = useState(0);
   const wallet = useWallet();
   const { notificationsEnabled } = useSettings();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isFirstCycleRef = useRef(true);
+
+  const clearFeedError = useCallback(() => setError(null), []);
+  useAutoClearError(!!error, clearFeedError);
 
   useEffect(() => {
     hasSeenWelcome().then((seen) => {
@@ -46,8 +53,10 @@ export default function HomeScreen() {
 
   const runCycle = useCallback(
     async (isManualRefresh = false) => {
-      if (isManualRefresh) setRefreshing(true);
-      else setLoading(true);
+      if (isManualRefresh) {
+        setRefreshing(true);
+        setErrorResetKey((k) => k + 1);
+      } else setLoading(true);
       setError(null);
 
       try {
@@ -63,10 +72,12 @@ export default function HomeScreen() {
         setNarratives((prev) => [...results, ...prev].slice(0, 50));
         setLastRun(Date.now());
         if (results.length === 0 && narratives.length === 0) {
-          setError("No spikes detected yet. Feed updates automatically.");
+          setEmptyHint("No spikes detected yet. Feed updates automatically.");
+        } else {
+          setEmptyHint(null);
         }
-      } catch (err: any) {
-        setError(err?.message ?? String(err));
+      } catch (err: unknown) {
+        setError(friendlyError(err));
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -127,6 +138,12 @@ export default function HomeScreen() {
         )}
       </View>
 
+      {error ? (
+        <Text style={styles.bannerError} numberOfLines={2}>
+          {error}
+        </Text>
+      ) : null}
+
       <FlatList
         data={narratives}
         keyExtractor={(item) => item.id}
@@ -144,6 +161,7 @@ export default function HomeScreen() {
             walletConnected={wallet.connected}
             walletPubkey={wallet.pubkey}
             authToken={wallet.authToken}
+            errorResetKey={errorResetKey}
           />
         )}
         ListEmptyComponent={
@@ -154,7 +172,7 @@ export default function HomeScreen() {
               <>
                 <Text style={styles.emptyTitle}>No narratives yet</Text>
                 <Text style={styles.emptyText}>
-                  {error ?? "Pull down to check for fresh signals."}
+                  {emptyHint ?? "Pull down to check for fresh signals."}
                 </Text>
               </>
             )}
@@ -226,6 +244,13 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontSize: 12,
     fontWeight: "600",
+  },
+  bannerError: {
+    color: colors.negative,
+    fontSize: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surfaceElevated,
   },
   feedContent: {
     padding: spacing.lg,
