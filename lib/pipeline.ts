@@ -6,12 +6,10 @@ import type { Narrative } from "./types";
 
 /**
  * Runs one full cycle: fetch live data -> detect spikes -> generate
- * narratives for anything new. Call this on an interval (see useNarrativeFeed
- * hook) or manually for testing.
+ * narratives for anything new. Call this on an interval or manually.
  *
- * Defaults to the auto-discovered watchlist (currently-boosted Solana
- * tokens, refreshed on its own slower cadence — see lib/watchlist.ts).
- * Pass an explicit list to override, e.g. for testing a specific pair.
+ * Defaults to the auto-discovered watchlist (boosted Solana tokens) plus
+ * any manual seeds in WATCHED_PAIR_ADDRESSES.
  */
 export async function runPipelineCycle(
   pairAddresses?: string[]
@@ -25,18 +23,28 @@ export async function runPipelineCycle(
     return [];
   }
 
+  console.log(`[pipeline] Watching ${watchlist.length} pairs`);
+
   const snapshots = await fetchPairSnapshots(watchlist);
+  console.log(`[pipeline] Got ${snapshots.length} snapshots`);
+
   const spikes = await detectSpikes(snapshots);
+  console.log(`[pipeline] Detected ${spikes.length} spikes`);
 
   if (spikes.length === 0) return [];
 
+  // Cap concurrent LLM calls so we don't burn free-tier quota in one blast
+  const limited = spikes.slice(0, 8);
   const narratives = await Promise.allSettled(
-    spikes.map((spike) => generateNarrative(spike))
+    limited.map((spike) => generateNarrative(spike))
   );
 
-  return narratives
+  const fulfilled = narratives
     .filter(
       (r): r is PromiseFulfilledResult<Narrative> => r.status === "fulfilled"
     )
     .map((r) => r.value);
+
+  console.log(`[pipeline] Generated ${fulfilled.length} narratives`);
+  return fulfilled;
 }

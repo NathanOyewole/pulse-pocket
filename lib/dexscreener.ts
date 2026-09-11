@@ -5,17 +5,13 @@ import type { TokenPairSnapshot } from "./types";
 
 const BASE_URL = "https://api.dexscreener.com";
 
-// Optional manual seed list — pairs you always want tracked regardless of
-// what's currently boosted (e.g. a blue-chip pair as a baseline so the feed
-// never looks totally empty). Merged with auto-discovered pairs at runtime,
-// not required to be filled in — see lib/watchlist.ts for the auto-discovery
-// that now drives WATCHED_PAIR_ADDRESSES by default.
+// Manual seed pairs always tracked alongside auto-discovered boosted tokens.
+// Addresses are case-sensitive base58 — verify on DexScreener if a pair returns null.
 export const WATCHED_PAIR_ADDRESSES: string[] = [
-  // Example: SOL/USDC on Raydium — add pair addresses here if you want them
-  // always included alongside whatever's auto-discovered.
-  // "Cbf...actualPairAddress",
-  "58oQChx4yWmvKwrbHU1nyskZLuszRW4JqzmgxcBaUb1t", // SOL-USDC Raydium
-  "AVs9TA4nWDzfPJE9gGVNJMVhcQy3V9PGazym1QKCK5vT",
+  // SOL/USDC Raydium (highest-liquidity SOL pair)
+  "58oQChx4yWmvKdwLLZzBi4ChoCc2fqCUWBkwMihLYQo2",
+  // SOL/USDC Orca Whirlpool
+  "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
 ];
 
 interface DexScreenerPair {
@@ -26,6 +22,7 @@ interface DexScreenerPair {
   volume: { h1: number; h24: number };
   priceChange: { h1: number; h24: number };
   liquidity?: { usd: number };
+  chainId?: string;
 }
 
 interface DexScreenerPairsResponse {
@@ -56,14 +53,7 @@ interface DexScreenerBoostEntry {
 
 /**
  * Fetches currently-boosted Solana tokens from DexScreener's public boost
- * feeds — a reasonable proxy for "tokens people are actively paying
- * attention to right now" without needing a hand-maintained address list.
- * Combines both the "latest" and "top" boost feeds and dedupes.
- *
- * Rate limit note: these endpoints are capped at 60 req/min (vs 300/min
- * for pair endpoints) — this is called by the watchlist refresh cycle,
- * which runs far less often than the narrative-polling cycle, so this
- * stays well under that limit.
+ * feeds. Combines "latest" and "top" and dedupes.
  */
 export async function fetchBoostedSolanaTokenAddresses(): Promise<string[]> {
   const [latestRes, topRes] = await Promise.all([
@@ -74,7 +64,7 @@ export async function fetchBoostedSolanaTokenAddresses(): Promise<string[]> {
   const addresses = new Set<string>();
 
   for (const res of [latestRes, topRes]) {
-    if (!res.ok) continue; // one feed failing shouldn't kill the other
+    if (!res.ok) continue;
     const entries: DexScreenerBoostEntry[] = await res.json();
     for (const entry of entries) {
       if (entry.chainId === "solana" && entry.tokenAddress) {
@@ -87,10 +77,7 @@ export async function fetchBoostedSolanaTokenAddresses(): Promise<string[]> {
 }
 
 /**
- * Resolves token (mint) addresses to their trading pairs and picks the
- * single highest-liquidity pair per token — a token can have many pools
- * across different DEXes, and tracking every one would just create
- * duplicate near-identical narratives for the same token.
+ * Resolves token mints to their highest-liquidity Solana pair each.
  */
 export async function resolveTokensToTopPairs(
   tokenAddresses: string[]
@@ -117,6 +104,7 @@ export async function resolveTokensToTopPairs(
     const data: DexScreenerPairsResponse = await res.json();
 
     for (const pair of data.pairs ?? []) {
+      if (pair.chainId && pair.chainId !== "solana") continue;
       const snapshot = toSnapshot(pair);
       const key = snapshot.baseMint.toLowerCase();
       const existing = bestPairByToken.get(key);
@@ -130,8 +118,7 @@ export async function resolveTokensToTopPairs(
 }
 
 /**
- * Fetch current snapshots for a set of Solana pair addresses.
- * DexScreener allows batching up to 30 addresses per request.
+ * Fetch current snapshots for Solana pair addresses (up to 30 per request).
  */
 export async function fetchPairSnapshots(
   pairAddresses: string[]
@@ -165,9 +152,7 @@ export async function fetchPairSnapshots(
 }
 
 /**
- * Search DexScreener for Solana pairs matching a query (token symbol,
- * name, or address). Useful for building/testing the watchlist before
- * you have exact pair addresses.
+ * Search DexScreener for Solana pairs matching a query.
  */
 export async function searchPairs(query: string): Promise<TokenPairSnapshot[]> {
   const url = `${BASE_URL}/latest/dex/search?q=${encodeURIComponent(query)}`;
@@ -179,7 +164,7 @@ export async function searchPairs(query: string): Promise<TokenPairSnapshot[]> {
 
   const data: DexScreenerPairsResponse = await res.json();
   const solanaPairs = (data.pairs ?? []).filter(
-    (p: any) => p.chainId === "solana"
+    (p: DexScreenerPair) => p.chainId === "solana"
   );
 
   return solanaPairs.map(toSnapshot);

@@ -3,8 +3,7 @@ import type { Narrative, Spike } from "./types";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-// Reuse the free-model rotation approach from Pulse — try models in order,
-// fall back if one is rate-limited or unavailable.
+// Free-model rotation — try in order, fall back if rate-limited or down.
 const MODEL_ROTATION = [
   "meta-llama/llama-3.1-8b-instruct:free",
   "google/gemma-2-9b-it:free",
@@ -17,7 +16,7 @@ function buildPrompt(spike: Spike): string {
   const factLine =
     kind === "volume"
       ? `1-hour trading volume is ${magnitude.toFixed(1)}x its recent baseline`
-      : `price moved ${magnitude > 0 ? "+" : ""}${magnitude.toFixed(1)}% in the last hour`;
+      : `price moved ${magnitude > 0 ? "+" : ""}${magnitude.toFixed(1)}% recently`;
 
   return `You are a crypto market analyst writing a very short, punchy narrative blurb for a mobile app feed.
 
@@ -29,7 +28,39 @@ Current price: $${currentSnapshot.priceUsd}
 Write exactly 1-2 sentences explaining what's likely happening and why a trader might care. Be concrete and specific, not generic. Do not use hedge phrases like "it's important to note." Do not use markdown.`;
 }
 
+function buildHeadline(spike: Spike): string {
+  return `${spike.baseSymbol}/${spike.quoteSymbol} ${
+    spike.kind === "price"
+      ? `${spike.magnitude > 0 ? "up" : "down"} ${Math.abs(spike.magnitude).toFixed(1)}%`
+      : `volume ${spike.magnitude.toFixed(1)}x`
+  }`;
+}
+
+/** Deterministic blurb so the feed still works when OpenRouter is down. */
+function templateBlurb(spike: Spike): string {
+  const { baseSymbol, quoteSymbol, kind, magnitude, currentSnapshot } = spike;
+  if (kind === "volume") {
+    return `${baseSymbol}/${quoteSymbol} just printed ${magnitude.toFixed(
+      1
+    )}x its recent 1h volume baseline at $${currentSnapshot.priceUsd.toFixed(
+      6
+    )}. Liquidity is moving — watch for follow-through.`;
+  }
+  const dir = magnitude > 0 ? "ripped higher" : "sold off";
+  return `${baseSymbol}/${quoteSymbol} ${dir} ${Math.abs(magnitude).toFixed(
+    1
+  )}% with price at $${currentSnapshot.priceUsd.toFixed(
+    6
+  )} (24h ${currentSnapshot.priceChangeH24 >= 0 ? "+" : ""}${currentSnapshot.priceChangeH24.toFixed(
+    1
+  )}%). Momentum is live on Solana.`;
+}
+
 async function callModel(model: string, prompt: string): Promise<string> {
+  if (!config.openRouterApiKey) {
+    throw new Error("OpenRouter API key missing");
+  }
+
   const res = await fetch(OPENROUTER_URL, {
     method: "POST",
     headers: {
@@ -55,12 +86,12 @@ async function callModel(model: string, prompt: string): Promise<string> {
 }
 
 /**
- * Generate a narrative blurb for a spike, rotating through free models
- * until one succeeds.
+ * Generate a narrative blurb for a spike. Tries free OpenRouter models,
+ * then falls back to a template so the feed is never empty on LLM failure.
  */
 export async function generateNarrative(spike: Spike): Promise<Narrative> {
   const prompt = buildPrompt(spike);
-  let lastError: unknown;
+  const headline = buildHeadline(spike);
 
   for (const model of MODEL_ROTATION) {
     try {
@@ -68,21 +99,24 @@ export async function generateNarrative(spike: Spike): Promise<Narrative> {
       return {
         id: `${spike.pairAddress}-${spike.detectedAt}`,
         spike,
-        headline: `${spike.baseSymbol}/${spike.quoteSymbol} ${
-          spike.kind === "price"
-            ? `${spike.magnitude > 0 ? "up" : "down"} ${Math.abs(spike.magnitude).toFixed(1)}%`
-            : `volume ${spike.magnitude.toFixed(1)}x`
-        }`,
+        headline,
         blurb,
         generatedAt: Date.now(),
       };
-    } catch (err) {
-      lastError = err;
-      continue; // try next model in rotation
+    } catch {
+      // try next model
     }
   }
 
-  throw new Error(
-    `All OpenRouter models failed. Last error: ${lastError}`
+  console.warn(
+    `[openrouter] All models failed for ${spike.baseSymbol} — using template blurb`
   );
+
+  return {
+    id: `${spike.pairAddress}-${spike.detectedAt}`,
+    spike,
+    headline,
+    blurb: templateBlurb(spike),
+    generatedAt: Date.now(),
+  };
 }
