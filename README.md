@@ -11,10 +11,11 @@ Built for **CLOCK IN** — Solana Mobile Hackathon (Sept 8 – Oct 8, 2026)
 1. Polls live Solana token price/volume data (DexScreener)
 2. Detects momentum spikes (price/volume vs. a short rolling baseline)
 3. Rug-screens the mover via Birdeye (mint/freeze authority, top-10 holder %, liquidity, token age)
-4. Uses an LLM (OpenRouter) to generate a short readable narrative blurb
-5. Surfaces narratives as a card feed on mobile — persisted across sessions
-6. Pushes a local notification on high-momentum events
-7. One-tap wallet connect + Jupiter swap directly from a narrative card
+4. Attaches a live attention-proxy (DexScreener boost velocity + Birdeye buy/sell pressure) so narratives reflect attention arriving before price
+5. Uses an LLM (OpenRouter) to generate a short readable narrative blurb
+6. Surfaces narratives as a card feed on mobile — persisted across sessions
+7. Pushes a spike alert via a native background task — even with the app killed
+8. One-tap wallet connect + Jupiter swap directly from a narrative card
 
 ## Scope
 
@@ -25,19 +26,19 @@ Pulse Pocket is a single vertical slice of the Pulse vision: **Narrative Radar**
 | Layer | Tech |
 |-------|------|
 | Mobile | React Native + Expo (development build — required for Mobile Wallet Adapter) |
-| Pipeline | Fully on-device: DexScreener polling → spike detection → Birdeye risk → OpenRouter narrative |
+| Pipeline | Fully on-device: DexScreener polling → spike detection → Birdeye risk + attention proxy → OpenRouter narrative → native background alerts |
 | Wallet | `@solana-mobile/mobile-wallet-adapter-protocol-web3js` |
 | Swap | Jupiter API |
 | RPC | Helius |
-| Market data | DexScreener (primary) + Birdeye (risk screen) |
+| Market data | DexScreener (primary) + Birdeye (risk screen + attention stats) |
 | AI | OpenRouter |
-| Notifications | Expo Notifications (local — server-push is the post-hackathon upgrade path) |
-| State | React context + AsyncStorage (feed, snapshot baseline, risk cache, settings) |
+| Notifications | Expo Notifications + TaskManager/BackgroundFetch (spike alerts with the app killed). Remote push = post-hackathon upgrade path |
+| State | React context + AsyncStorage (feed, snapshot/risk/boost caches, notified-alert map, settings) |
 
 ## Testing
 
 ```bash
-pnpm test      # vitest — spike detector thresholds, baselines, pruning, cap
+pnpm test      # vitest — spike detector, attention-proxy deltas, alert dedupe/cap
 pnpm lint      # eslint
 npx tsc --noEmit
 ```
@@ -65,9 +66,9 @@ pnpm android
 
 ```
 app/                  # Expo Router screens
-components/           # UI components (cards, risk badge, token logo)
+components/           # UI components (cards, risk/attention badge, token logo)
 lib/                  # Pipeline, detectors, API clients, storage
-lib/__tests__/        # Unit tests (spike detector)
+lib/__tests__/        # Unit tests (detector, attention, alerts)
 hooks/                # Custom hooks + providers
 constants/            # Theme, colors matching Pulse aesthetic
 docs/                 # Scope discipline + submission notes

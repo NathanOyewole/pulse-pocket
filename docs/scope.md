@@ -19,11 +19,13 @@ for real, and **judges test what exists, not what's pitched.**
 
 Pulse Pocket makes the scoping honest:
 
-- **One signal type:** price/volume momentum on Solana tokens.
+- **One signal type:** price/volume momentum on Solana tokens, evidenced by a
+  live attention-proxy (DexScreener boost velocity + Birdeye buy/sell pressure)
+  that backs each narrative — not a second shipped subsystem.
 - **One data source + one risk source:** DexScreener (live quotes) +
   Birdeye (rug-screen).
 - **One action:** one-tap swap via Jupiter — wallet-native, no leaving app.
-- **One surface:** a mobile card feed with local notifications.
+- **One surface:** a mobile card feed with native background alerts.
 
 Everything else from the Pulse platform is **stated roadmap, not built
 feature** — brand, thesis ("attention precedes liquidity"), and the dark
@@ -35,11 +37,16 @@ terminal design language carry over; the fantasy backend does not.
 - Spike detection against a rolling on-device baseline (AsyncStorage)
 - On-chain rug-screen via Birdeye (mint/freeze authority, top-10 holder %,
   liquidity, token age) — **not** LLM-guessed safety
+- Live attention-proxy: DexScreener boost velocity (delta vs. previous
+  snapshot) + Birdeye buy/sell pressure — the "attention precedes liquidity"
+  thesis is backed by real forward-looking data, not copy
 - LLM narrative generation via OpenRouter, with a transparent template
   fallback when the free quota is exhausted (the fallback is *labeled*, not
   presented as a model output)
+- Native background spike alerts (TaskManager + BackgroundFetch): real device
+  notifications even with the app fully killed — no server involved
 - Solana Mobile Wallet Adapter connect + Jupiter swap executed on-device
-- Local push notifications for new high-momentum narratives
+- Push notifications for in-app narratives while the app is running
 
 ## What is NOT built here (stated as roadmap in pitch, never claimed live)
 
@@ -47,8 +54,9 @@ terminal design language carry over; the fantasy backend does not.
 - Attention heatmaps / social ingestion (X, Telegram, Discord)
 - AI market briefs / alert engine
 - Server-side pipeline, Supabase feed store, Vercel cron
-- Push notifications while the app is fully killed (needs a server push
-  service — explicitly the post-hackathon upgrade path)
+- Real-time remote push (Expo Push service / Supabase): instant, cross-device
+  push needs a server — the post-hackathon upgrade path. The native background
+  task covers on-device alerts meanwhile
 
 ## Judge narrative
 
