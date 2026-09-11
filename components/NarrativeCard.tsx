@@ -1,12 +1,16 @@
 import { useState } from "react";
-import { View, Text, StyleSheet, Pressable, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ActivityIndicator,
+} from "react-native";
+import { useRouter } from "expo-router";
 import { colors, spacing } from "../constants/theme";
 import type { Narrative } from "../lib/types";
 import { swapSolForToken } from "../lib/jupiter";
 
-// Fixed swap size for the MVP — a "one tap" action, not an amount picker.
-// Revisit if there's time; a picker is a nice-to-have, not core to proving
-// the integration works.
 const SWAP_AMOUNT_SOL = 0.02;
 
 interface NarrativeCardProps {
@@ -24,13 +28,26 @@ export function NarrativeCard({
   walletPubkey,
   authToken,
 }: NarrativeCardProps) {
+  const router = useRouter();
   const [swapStatus, setSwapStatus] = useState<SwapStatus>("idle");
   const [swapError, setSwapError] = useState<string | null>(null);
   const [txSignature, setTxSignature] = useState<string | null>(null);
 
   const { spike } = narrative;
-  const isPositive =
-    spike.kind === "price" ? spike.magnitude > 0 : true; // volume spikes aren't inherently positive/negative
+  const isPositive = spike.kind === "price" ? spike.magnitude > 0 : true;
+
+  function openDetail() {
+    router.push({
+      pathname: "/pair/[address]",
+      params: {
+        address: spike.pairAddress,
+        headline: narrative.headline,
+        blurb: narrative.blurb,
+        kind: spike.kind,
+        magnitude: String(spike.magnitude),
+      },
+    });
+  }
 
   async function handleSwap() {
     if (!walletPubkey || !authToken) return;
@@ -55,55 +72,58 @@ export function NarrativeCard({
 
   return (
     <View style={styles.card}>
-      <View style={styles.topRow}>
-        <View
-          style={[
-            styles.kindBadge,
-            { borderColor: isPositive ? colors.positive : colors.negative },
-          ]}
-        >
-          <Text
+      <Pressable onPress={openDetail}>
+        <View style={styles.topRow}>
+          <View
             style={[
-              styles.kindBadgeText,
-              { color: isPositive ? colors.positive : colors.negative },
+              styles.kindBadge,
+              { borderColor: isPositive ? colors.positive : colors.negative },
             ]}
           >
-            {spike.kind === "volume" ? "VOLUME SPIKE" : "PRICE MOVE"}
+            <Text
+              style={[
+                styles.kindBadgeText,
+                { color: isPositive ? colors.positive : colors.negative },
+              ]}
+            >
+              {spike.kind === "volume" ? "VOLUME SPIKE" : "PRICE MOVE"}
+            </Text>
+          </View>
+          <Text style={styles.timestamp}>
+            {new Date(narrative.generatedAt).toLocaleTimeString()}
           </Text>
         </View>
-        <Text style={styles.timestamp}>
-          {new Date(narrative.generatedAt).toLocaleTimeString()}
-        </Text>
-      </View>
 
-      <Text style={styles.headline}>{narrative.headline}</Text>
-      <Text style={styles.blurb}>{narrative.blurb}</Text>
+        <Text style={styles.headline}>{narrative.headline}</Text>
+        <Text style={styles.blurb}>{narrative.blurb}</Text>
 
-      <View style={styles.statsRow}>
-        <View style={styles.stat}>
-          <Text style={styles.statLabel}>PRICE</Text>
-          <Text style={styles.statValue}>
-            ${spike.currentSnapshot.priceUsd.toFixed(6)}
-          </Text>
+        <View style={styles.statsRow}>
+          <View style={styles.stat}>
+            <Text style={styles.statLabel}>PRICE</Text>
+            <Text style={styles.statValue}>
+              ${spike.currentSnapshot.priceUsd.toFixed(6)}
+            </Text>
+          </View>
+          <View style={styles.stat}>
+            <Text style={styles.statLabel}>24H</Text>
+            <Text
+              style={[
+                styles.statValue,
+                {
+                  color:
+                    spike.currentSnapshot.priceChangeH24 >= 0
+                      ? colors.positive
+                      : colors.negative,
+                },
+              ]}
+            >
+              {spike.currentSnapshot.priceChangeH24 >= 0 ? "+" : ""}
+              {spike.currentSnapshot.priceChangeH24.toFixed(1)}%
+            </Text>
+          </View>
         </View>
-        <View style={styles.stat}>
-          <Text style={styles.statLabel}>24H</Text>
-          <Text
-            style={[
-              styles.statValue,
-              {
-                color:
-                  spike.currentSnapshot.priceChangeH24 >= 0
-                    ? colors.positive
-                    : colors.negative,
-              },
-            ]}
-          >
-            {spike.currentSnapshot.priceChangeH24 >= 0 ? "+" : ""}
-            {spike.currentSnapshot.priceChangeH24.toFixed(1)}%
-          </Text>
-        </View>
-      </View>
+        <Text style={styles.tapHint}>Tap for pair details →</Text>
+      </Pressable>
 
       {swapStatus === "success" && txSignature ? (
         <View style={[styles.swapButton, styles.swapButtonSuccess]}>
@@ -185,10 +205,7 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: "row",
     gap: spacing.lg,
-    marginBottom: spacing.md,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    marginBottom: spacing.sm,
   },
   stat: {
     flex: 1,
@@ -203,6 +220,11 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     fontSize: 14,
     fontWeight: "600",
+  },
+  tapHint: {
+    color: colors.text.muted,
+    fontSize: 11,
+    marginBottom: spacing.md,
   },
   swapButton: {
     backgroundColor: colors.accent,

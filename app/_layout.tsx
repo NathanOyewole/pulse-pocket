@@ -35,6 +35,13 @@ export default function RootLayout() {
             headerShown: false,
           }}
         />
+        <Stack.Screen
+          name="pair/[address]"
+          options={{
+            title: "Pair",
+            headerBackTitle: "Feed",
+          }}
+        />
       </Stack>
     </>
   );
