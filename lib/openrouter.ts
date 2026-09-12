@@ -115,7 +115,7 @@ function templateBlurb(spike: Spike): string {
   return body + attentionFacts(attention);
 }
 
-function sanitizeBlurb(raw: string): string | null {
+export function sanitizeBlurb(raw: string, spike: Spike): string | null {
   let text = raw.trim();
   if (!text) return null;
 
@@ -153,13 +153,48 @@ function sanitizeBlurb(raw: string): string | null {
     return null;
   }
 
+  // Broader net for meta-commentary the specific patterns above won't catch —
+  // a free/weak model restating the task ("User wants a crypto feed blurb.
+  // Constraints: ...") in a phrasing we haven't seen before slips right past
+  // exact-phrase blocklisting. These keywords essentially never appear in an
+  // actual blurb about a price move, regardless of exact wording used.
+  const metaKeywords =
+    /\b(constraint|markdown|bullet|numbering|heading|reasoning|quoting|user wants|the user is|max ~?\d+ words?|punchy trader language|no reasoning|no quoting|final text|final blurb)\b/i;
+  if (metaKeywords.test(text)) {
+    return null;
+  }
+
+  // Mask decimal points (digit.digit — prices like $0.001869, percentages
+  // like 666.0%) before sentence-splitting below. Without this, the split
+  // treats every decimal point as a sentence boundary, and capping at 2
+  // "sentences" silently truncates real content after the second one —
+  // this was cutting blurbs off mid-price in production (e.g. "...at $0."
+  // with everything after the decimal point discarded).
+  const DECIMAL_MASK = "\u0000";
+  text = text.replace(/(\d)\.(\d)/g, `$1${DECIMAL_MASK}$2`);
+
   const sentences = text.match(/[^.!?]+[.!?]+/g);
   if (sentences && sentences.length > 0) {
     text = sentences.slice(0, 2).join(" ").trim();
   }
 
+  text = text.replace(new RegExp(DECIMAL_MASK, "g"), ".");
+
   if (text.length < 24 || text.length > 280) return null;
   if (/^\s*(output|blurb|response)\s*:/i.test(text)) return null;
+
+  // Positive check, and the most robust one: a genuine blurb about
+  // baseSymbol/quoteSymbol will actually reference the token or a price/
+  // percent figure. Meta-commentary about the task essentially never does,
+  // no matter how it's phrased — this catches paraphrasings the keyword
+  // list above doesn't anticipate.
+  const mentionsSymbol =
+    text.toUpperCase().includes(spike.baseSymbol.toUpperCase()) ||
+    text.toUpperCase().includes(spike.quoteSymbol.toUpperCase());
+  const mentionsFigure = /[$%]/.test(text);
+  if (!mentionsSymbol && !mentionsFigure) {
+    return null;
+  }
 
   return text;
 }
@@ -209,7 +244,7 @@ async function callModel(model: string, spike: Spike): Promise<string> {
   const raw = data?.choices?.[0]?.message?.content?.trim();
   if (!raw) throw new Error(`OpenRouter (${model}) returned empty content`);
 
-  const cleaned = sanitizeBlurb(raw);
+  const cleaned = sanitizeBlurb(raw, spike);
   if (!cleaned) {
     throw new Error(`OpenRouter (${model}) returned unusable CoT/junk`);
   }
