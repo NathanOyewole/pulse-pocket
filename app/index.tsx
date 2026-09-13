@@ -21,6 +21,7 @@ import { hasSeenWelcome } from "../lib/onboarding";
 import { notifyNarrative } from "../lib/notifications";
 import { friendlyError } from "../lib/errors";
 import { MAX_FEED_ITEMS, loadFeed, saveFeed } from "../lib/feedStorage";
+import { isSeekerDevice } from "../lib/seeker";
 
 const POLL_INTERVAL_MS = 90_000;
 
@@ -133,6 +134,11 @@ export default function HomeScreen() {
       <View style={styles.walletBar}>
         <View style={styles.liveDot} />
         <Text style={styles.walletBarTitle}>PULSE POCKET</Text>
+        {isSeekerDevice() && (
+          <View style={styles.seekerBadge}>
+            <Text style={styles.seekerBadgeText}>SEEKER</Text>
+          </View>
+        )}
         <View style={{ flex: 1 }} />
         <Pressable
           onPress={() => router.push("/settings")}
@@ -241,6 +247,19 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     fontWeight: "700",
     fontSize: 13,
+    letterSpacing: 0.5,
+  },
+  seekerBadge: {
+    backgroundColor: colors.accent,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: spacing.sm,
+  },
+  seekerBadgeText: {
+    color: colors.background,
+    fontSize: 9,
+    fontWeight: "800",
     letterSpacing: 0.5,
   },
   gearBtn: {
