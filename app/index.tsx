@@ -17,6 +17,7 @@ import { useWallet } from "../hooks/useWallet";
 import { useSettings } from "../hooks/useSettings";
 import { useAutoClearError } from "../hooks/useAutoClearError";
 import { NarrativeCard } from "../components/NarrativeCard";
+import { UpdateBanner } from "../components/UpdateBanner";
 import { hasSeenWelcome } from "../lib/onboarding";
 import { notifyNarrative } from "../lib/notifications";
 import { friendlyError } from "../lib/errors";
@@ -175,6 +176,8 @@ export default function HomeScreen() {
           {error}
         </Text>
       ) : null}
+
+      <UpdateBanner />
 
       <FlatList
         data={narratives}

@@ -21,6 +21,7 @@
       "distribution": "internal",
       "environment": "production",
       "autoIncrement": true,
+      "channel": "production",
       "android": {
         "buildType": "apk"
       }

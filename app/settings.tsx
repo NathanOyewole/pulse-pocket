@@ -7,11 +7,13 @@ import {
   Switch,
   ScrollView,
   TextInput,
+  ActivityIndicator,
 } from "react-native";
 import { Stack } from "expo-router";
 import { colors, spacing } from "../constants/theme";
 import { useWallet } from "../hooks/useWallet";
 import { useSettings } from "../hooks/useSettings";
+import { useAppUpdates } from "../hooks/useAppUpdates";
 import {
   SWAP_AMOUNT_OPTIONS,
   SWAP_AMOUNT_MIN_SOL,
@@ -23,6 +25,7 @@ import {
 export default function SettingsScreen() {
   const wallet = useWallet();
   const settings = useSettings();
+  const updates = useAppUpdates();
   const [customRaw, setCustomRaw] = useState("");
   const [customError, setCustomError] = useState<string | null>(null);
 
@@ -115,6 +118,58 @@ export default function SettingsScreen() {
             trackColor={{ false: colors.border, true: colors.accentDim }}
             thumbColor={settings.notificationsEnabled ? colors.accent : colors.text.tertiary}
           />
+        </View>
+
+        <Text style={[styles.section, { marginTop: spacing.xl }]}>UPDATES</Text>
+        <View style={styles.row}>
+          <View style={{ flex: 1, paddingRight: spacing.md }}>
+            <Text style={styles.rowTitle}>App version</Text>
+            <Text style={styles.hint}>
+              v{updates.nativeVersion}
+              {updates.runtimeVersion ? ` · runtime ${updates.runtimeVersion}` : ""}
+              {updates.runningOta
+                ? ` · running OTA${updates.otaUpdatedAt ? ` from ${updates.otaUpdatedAt.toLocaleDateString()}` : ""}`
+                : " · built-in"}
+            </Text>
+            {updates.supported ? (
+              <Text style={styles.hint}>
+                Updates {updates.updateReady ? "ready — restart to apply" : updates.updateAvailable ? "available — applying" : "up to date"}
+                {updates.lastCheckedAt
+                  ? ` · checked ${updates.lastCheckedAt.toLocaleTimeString()}`
+                  : ""}
+              </Text>
+            ) : (
+              <Text style={styles.updatesDisabled}>
+                OTA unavailable on this build (Expo Go or an APK built before
+                expo-updates). Reinstall the latest APK to enable in-app
+                updates.
+              </Text>
+            )}
+            {updates.checkError ? (
+              <Text style={styles.updatesError}>{updates.checkError}</Text>
+            ) : null}
+          </View>
+          {updates.supported && updates.updateReady ? (
+            <Pressable style={styles.checkBtn} onPress={() => updates.applyAndRestart().catch(() => {})}>
+              <Text style={styles.checkBtnText}>Restart</Text>
+            </Pressable>
+          ) : updates.supported && updates.isChecking ? (
+            <ActivityIndicator size="small" color={colors.accent} />
+          ) : updates.supported ? (
+            <Pressable
+              style={styles.checkBtnGhost}
+              onPress={() => {
+                updates.checkForUpdates().catch(() => {});
+              }}
+              disabled={updates.isDownloading}
+            >
+              {updates.isDownloading ? (
+                <ActivityIndicator size="small" color={colors.accent} />
+              ) : (
+                <Text style={styles.checkBtnGhostText}>Check</Text>
+              )}
+            </Pressable>
+          ) : null}
         </View>
 
         <Text style={[styles.section, { marginTop: spacing.xl }]}>WALLET</Text>
@@ -282,5 +337,39 @@ const styles = StyleSheet.create({
     fontSize: 11,
     textAlign: "center",
     marginTop: spacing.xxl,
+  },
+  updatesDisabled: {
+    color: colors.warning,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: spacing.xs,
+  },
+  updatesError: {
+    color: colors.negative,
+    fontSize: 12,
+    marginTop: spacing.xs,
+  },
+  checkBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  checkBtnText: {
+    color: colors.background,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  checkBtnGhost: {
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  checkBtnGhostText: {
+    color: colors.accent,
+    fontWeight: "600",
+    fontSize: 13,
   },
 });

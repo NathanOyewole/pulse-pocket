@@ -16,6 +16,7 @@ Built for **CLOCK IN** — Solana Mobile Hackathon (Sept 8 – Oct 8, 2026)
 6. Surfaces narratives as a card feed on mobile — persisted across sessions
 7. Pushes a spike alert via a native background task — even with the app killed
 8. One-tap wallet connect + Jupiter swap directly from a narrative card
+9. OTA updates — new versions apply themselves over the air (expo-updates + EAS Update)
 
 ## Scope
 
@@ -33,6 +34,7 @@ Pulse Pocket is a single vertical slice of the Pulse vision: **Narrative Radar**
 | Market data | DexScreener (primary) + Birdeye (risk screen + attention stats) |
 | AI | OpenRouter |
 | Notifications | Expo Notifications + TaskManager/BackgroundFetch (spike alerts with the app killed). Remote push = post-hackathon upgrade path |
+| Updates | expo-updates + EAS Update — OTA JS updates on installed APKs (native changes still need a fresh build) |
 | State | React context + AsyncStorage (feed, snapshot/risk/boost caches, notified-alert map, settings) |
 
 ## Testing
