@@ -43,6 +43,13 @@ pnpm lint      # eslint
 npx tsc --noEmit
 ```
 
+## Submission
+
+CLOCK IN judging pack — paste-ready form copy, demo video script (≤3 min),
+deck outline, and judge/test instructions — lives in
+[`docs/hackathon.md`](docs/hackathon.md). Scope discipline (what's real vs
+roadmap) is in [`docs/scope.md`](docs/scope.md).
+
 ## Design
 
 Dark terminal / ticker aesthetic reused from [usepulse-two.vercel.app](https://usepulse-two.vercel.app)
