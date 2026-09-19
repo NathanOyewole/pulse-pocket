@@ -22,7 +22,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.nathanoyewole.pulsepocket",
-      "versionCode": 3
+      "versionCode": 4
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -32,9 +32,7 @@
       "fallbackToCacheTimeout": 0,
       "checkAutomatically": "ON_LOAD"
     },
-    "runtimeVersion": {
-      "policy": "fingerprint"
-    },
+    "runtimeVersion": "1.0.0",
     "plugins": [
       "expo-router",
       "expo-background-fetch",

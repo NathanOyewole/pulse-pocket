@@ -38,3 +38,8 @@ AGENTS.md
 
 # typescript
 *.tsbuildinfo
+
+# build artifacts
+*.apk
+build/
+
