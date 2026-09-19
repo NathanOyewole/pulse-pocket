@@ -49,7 +49,7 @@ export async function notifyNarrative(narrative: Narrative): Promise<void> {
     content: {
       title: narrative.headline,
       body: narrative.blurb,
-      data: { narrativeId: narrative.id },
+      data: { narrativeId: narrative.id, pairAddress: narrative.spike.pairAddress },
     },
     trigger: null, // fire immediately
   });
