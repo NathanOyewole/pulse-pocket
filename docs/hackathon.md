@@ -72,6 +72,10 @@ captions.** Record on an Android device with the internal-release build.
 
 ## 5. Pitch deck outline (5–6 slides)
 
+A working, presentable deck in the Pulse terminal aesthetic lives at
+[`docs/deck.html`](deck.html) (self-contained — open in a browser, `←`/`→` to
+move, touch swipe on a phone, print to PDF via browser). Slide structure:
+
 1. **Title** — Pulse Pocket + one-line thesis.
 2. **Problem** — Hype cycles move before price; retail finds out after. Noise > signal; most alerts are web apps wrapped in a shell.
 3. **Solution** — Narrative Radar on your phone: detect → understand → act → alerted. Show the loop graphic.

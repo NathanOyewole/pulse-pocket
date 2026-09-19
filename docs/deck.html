@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pulse Pocket — CLOCK IN Deck</title>
+<style>
+  :root {
+    --bg: #000000;
+    --surface: #0a0a0a;
+    --elevated: #111111;
+    --border: #1a1a1a;
+    --subtle: #222222;
+    --accent: #00ff9d;
+    --accent-dim: #00cc7a;
+    --text: #ffffff;
+    --text-2: #a0a0a0;
+    --text-3: #666666;
+    --muted: #444444;
+    --neg: #ff4d4d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "SF Mono", "Cascadia Code", Consolas, "JetBrains Mono", Menlo, monospace;
+    overflow: hidden;
+  }
+  .bg-grid {
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+  }
+
+  .deck { height: 100vh; position: relative; }
+  .slide {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    justify-content: center;
+    padding: 8vh 9vw;
+    opacity: 0; visibility: hidden;
+    transform: translateY(12px);
+    transition: opacity .35s ease, transform .35s ease;
+  }
+  .slide.active { opacity: 1; visibility: visible; transform: none; }
+  .slide-inner { max-width: 1050px; width: 100%; margin: 0 auto; }
+
+  .kicker {
+    color: var(--accent); font-size: 12px; font-weight: 700;
+    letter-spacing: 3px; text-transform: uppercase; margin-bottom: 22px;
+  }
+  h1 { font-size: clamp(34px, 5.2vw, 64px); line-height: 1.05; font-weight: 700; margin-bottom: 18px; }
+  h2 { font-size: clamp(26px, 3.6vw, 44px); font-weight: 700; margin-bottom: 18px; }
+  .sub { color: var(--text-2); font-size: clamp(15px, 1.7vw, 20px); line-height: 1.5; margin-bottom: 8px; }
+  .sub strong { color: var(--text); }
+  .accent { color: var(--accent); }
+  .dim { color: var(--text-3); }
+  .neg { color: var(--neg); }
+
+  .divider { height: 1px; background: var(--border); margin: 26px 0; }
+
+  .logo { max-height: 110px; margin-bottom: 28px; }
+
+  .pill {
+    display: inline-block; border: 1px solid var(--subtle); border-radius: 999px;
+    padding: 6px 14px; font-size: 12px; color: var(--text-2); margin-right: 8px; margin-bottom: 6px;
+    letter-spacing: .5px;
+  }
+  .pill.on { border-color: var(--accent-dim); color: var(--accent); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--elevated); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px;
+  }
+  .card .t { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 10px; }
+  .card .b { color: var(--text-2); font-size: 13px; line-height: 1.5; }
+
+  .flow { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .node {
+    background: var(--elevated); border: 1px solid var(--subtle); border-radius: 8px;
+    padding: 10px 14px; font-size: 12px; color: var(--text-2);
+  }
+  .node.hot { border-color: var(--accent-dim); color: var(--accent); }
+  .arrow { color: var(--muted); }
+
+  .stat-row { display: flex; flex-wrap: wrap; gap: 22px; margin-bottom: 20px; }
+  .stat .n { font-size: clamp(26px, 3vw, 40px); font-weight: 700; color: var(--accent); }
+  .stat .l { font-size: 11px; color: var(--text-3); letter-spacing: 1px; text-transform: uppercase; margin-top: 4px; }
+
+  .ruler { position: fixed; bottom: 22px; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 0 28px; z-index: 5; }
+  .dots { display: flex; gap: 8px; }
+  .dot { width: 7px; height: 7px; border-radius: 99px; background: var(--muted); cursor: pointer; transition: background .2s; }
+  .dot.active { background: var(--accent); width: 20px; }
+  .count { color: var(--text-3); font-size: 12px; letter-spacing: 1px; }
+  .navhint { color: var(--muted); font-size: 11px; margin-right: 14px; }
+
+  .quote { border-left: 2px solid var(--accent); padding-left: 18px; font-size: clamp(18px, 2.4vw, 28px); line-height: 1.4; color: var(--text); }
+  .quote .q { color: var(--text-3); font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px; }
+  ul.real { list-style: none; }
+  ul.real li { position: relative; padding-left: 18px; margin-bottom: 10px; color: var(--text-2); font-size: clamp(14px, 1.6vw, 18px); line-height: 1.45; }
+  ul.real li::before { content: "◆"; position: absolute; left: 0; top: 1px; color: var(--accent); font-size: 10px; }
+  ul.road { list-style: none; }
+  ul.road li { position: relative; padding-left: 18px; margin-bottom: 10px; color: var(--text-3); font-size: clamp(14px, 1.6vw, 18px); line-height: 1.45; }
+  ul.road li::before { content: "◇"; position: absolute; left: 0; top: 1px; color: var(--muted); font-size: 10px; }
+
+  .footer-note { margin-top: 30px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+
+<div class="deck" id="deck">
+
+  <!-- 1. Title -->
+  <section class="slide active">
+    <div class="slide-inner">
+      <img class="logo" src="../assets/splash-logo.png" alt="Pulse Pocket" />
+      <div class="kicker">Solana Mobile · CLOCK IN</div>
+      <h1>Pulse Pocket</h1>
+      <p class="sub">Real-time Solana <strong>narrative intelligence</strong> — in your pocket, with <strong>wallet-native</strong> action.</p>
+      <div class="divider"></div>
+      <p class="quote"><div class="q">Core thesis</div>Attention precedes liquidity. Narratives move before price does.</p>
+      <p class="footer-note" id="t1footer"></p>
+    </div>
+  </section>
+
+  <!-- 2. Problem -->
+  <section class="slide">
+    <div class="slide-inner">
+      <div class="kicker">Problem</div>
+      <h2>By the time you see the move, it already moved.</h2>
+      <p class="sub">Hype cycles outrun price, and most "mobile" crypto tools are just websites in a shell — no wallet, no awareness of your phone, no moment-of-momentum action.</p>
+      <div class="divider"></div>
+      <div class="grid">
+        <div class="card"><div class="t">Noise &gt; signal</div><div class="b">Thousands of tokens pumping daily. Feeds are firehoses; nobody is telling you <em>why</em> something moved.</div></div>
+        <div class="card"><div class="t">Hype precedes price</div><div class="b">Attention lands on a token before liquidity does. By the time it's on every dashboard, the entry is gone.</div></div>
+        <div class="card"><div class="t">Web apps in a shell</div><div class="b">Wrappers can't alert you with the app killed, can't use your mobile wallet natively, and can't act in one tap.</div></div>
+        <div class="card"><div class="t">No risk screen</div><div class="b">Pumps get hyped. Most "AI alpha" never checks the contract for the rug pulled just after the narrative.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Solution -->
+  <section class="slide">
+    <div class="slide-inner">
+      <div class="kicker">Solution</div>
+      <h2>A narrative radar that lives on your phone.</h2>
+      <p class="sub">One loop — <strong>listen, understand, act, stay alerted</strong> — wired end-to-end with real data.</p>
+      <div class="divider"></div>
+      <div class="grid">
+        <div class="card"><div class="t">Listen</div><div class="b">Polls live Solana price/volume from DexScreener every 90s. Detects price spikes (≥8% 1h / ≥25% 24h) and volume spikes (≥2x a rolling on-device baseline).</div></div>
+        <div class="card"><div class="t">Understand</div><div class="b">Rug-screens the mover on-chain via Birdeye, reads an attention-proxy, and writes a short plain-language narrative from those real facts with an LLM.</div></div>
+        <div class="card"><div class="t">Act</div><div class="b">Connect your Solana mobile wallet and swap through Jupiter in one tap — on the narrative card, no leaving the feed.</div></div>
+        <div class="card"><div class="t">Stay alerted</div><div class="b">A native background task fires a real spike alert with the app fully killed. Tapping it deep-links straight back into that token.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Pipeline -->
+  <section class="slide">
+    <div class="slide-inner">
+      <div class="kicker">Built for real — the pipeline</div>
+      <h2>Every signal is earned, nothing is mocked.</h2>
+      <div class="stat-row">
+        <div class="stat"><div class="n">90s</div><div class="l">in-app poll</div></div>
+        <div class="stat"><div class="n">~15m</div><div class="l">background alert floor (Android)</div></div>
+        <div class="stat"><div class="n">4</div><div class="l">on-chain / API sources</div></div>
+        <div class="stat"><div class="n">0</div><div class="l">servers, backends, mocks</div></div>
+      </div>
+      <div class="flow">
+        <span class="node hot">DexScreener</span><span class="arrow">→</span>
+        <span class="node">Spike detector</span><span class="arrow">→</span>
+        <span class="node">Birdeye rug-screen</span><span class="arrow">∦</span>
+        <span class="node">Attention proxy</span><span class="arrow">→</span>
+        <span class="node hot">LLM narrative</span><span class="arrow">→</span>
+        <span class="node">Persisted feed</span><span class="arrow">→</span>
+        <span class="node hot">Native alert</span>
+      </div>
+      <div class="divider"></div>
+      <div class="grid">
+        <div class="card"><div class="t">Risk = on-chain truth</div><div class="b">Mint/freeze authority, mutable metadata, top-10 holder %, creator %, liquidity, age — straight from the contract, not LLM-guessed.</div></div>
+        <div class="card"><div class="t">Attention, measured</div><div class="b">DexScreener boost velocity + Birdeye buy/sell/unique-wallet counts — "attention precedes liquidity" made into a number that feeds the story.</div></div>
+        <div class="card"><div class="t">Graceful honesty</div><div class="b">LLM quota exhausted? The app says so and uses a labeled template — it never fabricates a narrative.</div></div>
+        <div class="card"><div class="t">On-device</div><div class="b">Feed, caches, settings all in AsyncStorage. Nothing to stand up, nothing to break on judge day.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Mobile-only segment -->
+  <section class="slide">
+    <div class="slide-inner">
+      <div class="kicker">Mobile-first, Solana-native</div>
+      <h2>Built for the phone, not ported to it.</h2>
+      <div class="divider"></div>
+      <ul class="real">
+        <li><strong>Mobile Wallet Adapter</strong> — native wallet connect on a development build (MWA can't run in Expo Go; this is a real native app).</li>
+        <li><strong>One-tap Jupiter swap</strong> executed on-device from the narrative card itself.</li>
+        <li><strong>Alert with the app killed</strong> — TaskManager + BackgroundFetch reusing the spike detector; no server, no push provider.</li>
+        <li><strong>Tap the alert → back into that token</strong> — deep-linked straight to the pair's risk screen and swap.</li>
+        <li><strong>OTA updates</strong> — new versions ship over the air to installed APKs (expo-updates + EAS Update).</li>
+        <li><strong>Android-first, Seeker-ready</strong> — a working internal-release APK, installable today.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 6. The moment -->
+  <section class="slide">
+    <div class="slide-inner">
+      <div class="kicker">The money moment</div>
+      <h2>Phone on the table. App killed. Then it fires.</h2>
+      <div class="divider"></div>
+      <ol>
+        <li class="node" style="margin-bottom:10px;display:block;max-width:640px;">A token starts pumping on-chain.</li>
+        <li class="node" style="margin-bottom:10px;display:block;max-width:640px;">A native background task catches the spike and pushes a real notification:</li>
+      </ol>
+      <div style="background:var(--elevated);border:1px solid var(--accent-dim);border-radius:12px;padding:16px;max-width:640px;margin:16px 0;">
+        <div style="font-size:11px;color:var(--text-3);letter-spacing:1px;margin-bottom:6px;">PULSE POCKET · SPIKE</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px;">VOLUME SPIKE — $SOLV (+3.8x, 24h)</div>
+        <div style="font-size:12px;color:var(--text-2);">Tap to open</div>
+      </div>
+      <p class="sub"><strong>Tap it.</strong> Straight into that pair — price, rug-screen, chart link, wallet, swap.</p>
+      <p class="footer-note">That is the whole thesis, end to end, on one lock screen.</p>
+    </div>
+  </section>
+
+  <!-- 7. Roadmap (honest) -->
+  <section class="slide">
+    <div class="slide-inner">
+      <div class="kicker">Roadmap — stated out loud</div>
+      <h2>One real slice of a bigger vision.</h2>
+      <p class="sub">Pulse Pocket is the <span class="accent">Narrative Radar</span> subsystem of the Pulse platform, shipped as a real vertical slice. What's not built is said so — in the app, the repo, and this deck.</p>
+      <div class="divider"></div>
+      <div class="grid">
+        <div class="card"><div class="t">Shipped today</div><div class="b">Live spikes, on-chain risk, attention-proxy, LLM narratives, native alerts, deep link, one-tap swap, OTA updates. 24 unit tests, type-checked, linted.</div></div>
+        <div class="card"><div class="t" style="color:var(--muted)">Roadmap (not faked)</div><div class="b" style="color:var(--text-3)">Smart-wallet intelligence · attention heatmaps · X/Telegram/Discord social ingestion · real-time remote push · Solana dApp Store listing.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. Close -->
+  <section class="slide">
+    <div class="slide-inner">
+      <div class="kicker">Pulse Pocket</div>
+      <h1>Attention precedes liquidity.</h1>
+      <p class="sub">We took the one slice that could exist for real on a phone in 30 days — and shipped it. The rest of the platform is the roadmap, and we said so.</p>
+      <div class="divider"></div>
+      <p class="sub"><strong>Try it:</strong> installable Android APK · fully working pipeline · no backend to break.</p>
+      <p class="footer-note">Built by @NathanOyewole · Solana Mobile CLOCK IN · Not financial advice.</p>
+    </div>
+  </section>
+
+</div>
+
+<div class="ruler">
+  <div class="dots" id="dots"></div>
+  <div style="display:flex;align-items:center;">
+    <span class="navhint">← → to navigate</span>
+    <span class="count" id="count"></span>
+  </div>
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const dotsEl = document.getElementById('dots');
+  const countEl = document.getElementById('count');
+  let i = 0;
+
+  slides.forEach((_, n) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (n === 0 ? ' active' : '');
+    d.onclick = () => go(n);
+    dotsEl.appendChild(d);
+  });
+  const dots = Array.from(dotsEl.children);
+
+  function go(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, k) => s.classList.toggle('active', k === i));
+    dots.forEach((d, k) => d.classList.toggle('active', k === i));
+    countEl.textContent = (i + 1) + ' / ' + slides.length;
+    countEl.textContent = String(i + 1).padStart(2, '0') + ' / ' + String(slides.length).padStart(2, '0');
+  }
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); go(i + 1); }
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(i - 1); }
+    if (e.key === 'Home') go(0);
+    if (e.key === 'End') go(slides.length - 1);
+  });
+  let x0 = null;
+  window.addEventListener('touchstart', (e) => x0 = e.touches[0].clientX, { passive: true });
+  window.addEventListener('touchend', (e) => {
+    if (x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0;
+    if (dx < -40) go(i + 1);
+    if (dx > 40) go(i - 1);
+    x0 = null;
+  }, { passive: true });
+  go(0);
+</script>
+</body>
+</html>
