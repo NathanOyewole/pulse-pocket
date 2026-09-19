@@ -2,104 +2,108 @@
 
 **Real-time Solana narrative intelligence, in your pocket, with wallet-native action.**
 
-Built for **CLOCK IN** — Solana Mobile Hackathon (Sept 8 – Oct 8, 2026)
+Pulse Pocket is the mobile, wallet-native slice of the Pulse vision — Narrative
+Radar. It watches live Solana token activity, detects momentum spikes,
+rug-screens the mover on-chain, reads attention before price, writes a short
+plain-language narrative, and lets you act on it in one tap.
 
 > Attention precedes liquidity. Narratives move before price does.
 
 ## What it does
 
-1. Polls live Solana token price/volume data (DexScreener)
-2. Detects momentum spikes (price/volume vs. a short rolling baseline)
-3. Rug-screens the mover via Birdeye (mint/freeze authority, top-10 holder %, liquidity, token age)
-4. Attaches a live attention-proxy (DexScreener boost velocity + Birdeye buy/sell pressure) so narratives reflect attention arriving before price
-5. Uses an LLM (OpenRouter) to generate a short readable narrative blurb
-6. Surfaces narratives as a card feed on mobile — persisted across sessions
-7. Pushes a spike alert via a native background task — even with the app killed
-8. One-tap wallet connect + Jupiter swap directly from a narrative card
-9. OTA updates — new versions apply themselves over the air (expo-updates + EAS Update)
+1. Polls live Solana price/volume data every 90s (DexScreener)
+2. Detects momentum spikes against a rolling on-device baseline (price ≥8% 1h /
+   ≥25% 24h; volume ≥2x baseline)
+3. Rug-screens the mover via Birdeye on-chain data (mint/freeze authority,
+   mutable metadata, top-10 holder %, creator %, liquidity, age)
+4. Reads a live attention-proxy (DexScreener boost velocity + Birdeye
+   buy/sell/unique-wallet counts) — attention arriving before price
+5. Writes a short narrative blurb with an LLM (OpenRouter); a *labeled*
+   template fallback when quota is exhausted — never a fabricated story
+6. Surfaces narratives as a persisted card feed
+7. Alerts via a native background task — real notifications with the app
+   killed; tapping one deep-links straight into that token
+8. One-tap wallet connect (Mobile Wallet Adapter) + Jupiter swap from the card
+9. OTA updates — new versions apply over the air (expo-updates + EAS Update)
 
-## Scope
+Everything runs on-device: feed, caches, and settings live in AsyncStorage.
+No backend, nothing to stand up.
 
-Pulse Pocket is a single vertical slice of the Pulse vision: **Narrative Radar** — one real signal type, live, on a phone, with a wallet action attached. The broader Pulse platform (smart-wallet intelligence, attention heatmaps, alert engine, the behavioral graph) is roadmap and story — see [`docs/scope.md`](docs/scope.md) — not built or claimed here.
+Honest scope: Pulse Pocket ships one real subsystem of the wider Pulse platform
+(Narrative Radar). The rest of that platform — smart-wallet intelligence,
+attention heatmaps, social ingestion, real-time remote push — is stated
+roadmap, not built or claimed.
 
-## Tech Stack
+## Tech stack
 
 | Layer | Tech |
 |-------|------|
-| Mobile | React Native + Expo (development build — required for Mobile Wallet Adapter) |
+| Mobile | React Native + Expo (development build required for Mobile Wallet Adapter) |
 | Pipeline | Fully on-device: DexScreener polling → spike detection → Birdeye risk + attention proxy → OpenRouter narrative → native background alerts |
 | Wallet | `@solana-mobile/mobile-wallet-adapter-protocol-web3js` |
 | Swap | Jupiter API |
 | RPC | Helius |
 | Market data | DexScreener (primary) + Birdeye (risk screen + attention stats) |
 | AI | OpenRouter |
-| Notifications | Expo Notifications + TaskManager/BackgroundFetch (spike alerts with the app killed). Remote push = post-hackathon upgrade path |
-| Updates | expo-updates + EAS Update — OTA JS updates on installed APKs (native changes still need a fresh build) |
+| Notifications | Expo Notifications + TaskManager/BackgroundFetch (alerts with the app killed) |
+| Updates | expo-updates + EAS Update — OTA JS updates on installed APKs (native changes need a fresh build) |
 | State | React context + AsyncStorage (feed, snapshot/risk/boost caches, notified-alert map, settings) |
 
 ## Testing
 
 ```bash
-pnpm test      # vitest — spike detector, attention-proxy deltas, alert dedupe/cap
-pnpm lint      # eslint
-npx tsc --noEmit
+pnpm test            # vitest — spike detector, attention-proxy deltas, alert dedupe/cap
+pnpm lint            # eslint
+pnpm exec tsc --noEmit
 ```
 
-## Submission
-
-CLOCK IN judging pack — paste-ready form copy, demo video script (≤3 min),
-deck outline, and judge/test instructions — lives in
-[`docs/hackathon.md`](docs/hackathon.md). Scope discipline (what's real vs
-roadmap) is in [`docs/scope.md`](docs/scope.md).
-
-## Design
-
-Dark terminal / ticker aesthetic — matching the wider Pulse web vision. Pulse
-Pocket is the sliced-down, mobile, wallet-native build of that vision: one
-real subsystem ("Narrative Radar") shipped as a working phone app, with the
-rest of the platform stated as roadmap.
-
-## Getting Started
+## Building
 
 ```bash
 git clone https://github.com/NathanOyewole/pulse-pocket.git
 cd pulse-pocket
 pnpm install
 
-# API keys live in .env (see .env.example for the four required):
-# OpenRouter, Helius, Birdeye, Jupiter
+# API keys live in .env (see .env.example): OpenRouter, Helius, Birdeye, Jupiter
+```
 
-# Important: use a development build (not Expo Go)
+Development build (MWA **requires** this, not Expo Go):
+
+```bash
 pnpm prebuild
 pnpm android
 ```
 
-## Building the submission APK
-
-The judge-facing APK is the **production** EAS profile (internal distribution,
-so it installs directly; production environment; embeds `channel: production`
-for OTA updates):
+Production / judge-facing APK (internal distribution, installs directly;
+embeds `channel: production` so installed builds receive OTA updates):
 
 ```bash
-pnpm build:prod        # eas build --profile production --platform android
+pnpm run build:prod        # eas build --profile production --platform android
 ```
 
-- Development client (`pnpm build:dev`) and preview builds can **not** receive
-  OTA updates — only production embeds the updates channel.
-- After installing the production APK once, future JS changes ship over the
-  air with `eas update --channel production --auto`.
-- Native changes (new module / SDK bump) still require a fresh build.
+Shipping a JS-only change over the air (no rebuild needed):
 
-## Project Structure
+```bash
+eas update --channel production --auto
+```
+
+Notes:
+- Development and preview builds cannot receive OTA updates — only production
+  embeds the updates channel.
+- Native changes (new module, SDK bump) still require a fresh APK build.
+- APKs built before `expo-updates` was added can't receive updates; reinstall
+  once with a current production build.
+
+## Project structure
 
 ```
-app/                  # Expo Router screens
-components/           # UI components (cards, risk/attention badge, token logo)
+app/                  # Expo Router screens (feed, pair detail, settings, welcome)
+components/           # UI components (narrative cards, alert/deep-link banners, risk badge)
 lib/                  # Pipeline, detectors, API clients, storage
 lib/__tests__/        # Unit tests (detector, attention, alerts)
-hooks/                # Custom hooks + providers
-constants/            # Theme, colors matching Pulse aesthetic
-docs/                 # Scope discipline + submission notes
+hooks/                # Custom hooks + providers (wallet, settings, updates)
+constants/            # Theme / colors
+assets/               # Icons, splash
 ```
 
 ---
