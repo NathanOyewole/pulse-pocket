@@ -86,9 +86,17 @@ move, touch swipe on a phone, print to PDF via browser). Slide structure:
 ## 6. Repo / testing instructions for judges
 
 - Repo: https://github.com/NathanOyewole/pulse-pocket (branch `main`)
-- Build: `pnpm install` → `pnpm prebuild` → `pnpm android` (dev build; MWA
-  **requires** a development build, not Expo Go). Or install the submitted
-  internal-release APK directly.
+- The submitted APK is built with the **`production`** EAS profile
+  (`eas build --profile production --platform android`, or
+  `pnpm run build:prod`). "production" is the app *environment* (bundled
+  minified/stable) — the profile is still `distribution: internal`, so judges
+  install it directly as an APK. It is **not** the development client and not
+  the preview profile: production embeds `channel: production`, which is what
+  enables OTA updates (`eas update --channel production`) to reach the
+  installed APK later. Development/preview builds can't receive those updates.
+- Rebuilding source from scratch: `pnpm install` → `pnpm prebuild` →
+  `pnpm android` (dev build; MWA **requires** a development build, not Expo Go).
+  Judges who don't want to build just install the submitted production APK.
 - Env keys (`.env`, four): `EXPO_PUBLIC_OPENROUTER_API_KEY`,
   `EXPO_PUBLIC_HELIUS_API_KEY`, `EXPO_PUBLIC_BIRDEYE_API_KEY`,
   `EXPO_PUBLIC_JUPITER_API_KEY`. The app degrades gracefully if missing
@@ -103,7 +111,8 @@ move, touch swipe on a phone, print to PDF via browser). Slide structure:
 - No server-side pipeline, Supabase feed, or cron (roadmap).
 - No "real-time" remote push — native background alerts are the shipped path.
 - No smart-wallet clustering / heatmaps / social ingestion (roadmap).
-- The landing page (https://usepulse-two.vercel.app) is brand/aesthetic only.
+- Pulse Pocket is the **sliced, mobile build** of the wider Pulse vision; the
+  web presence is product and roadmap copy, not a separate product to link.
 
 *Reminder: rebuild the internal-release APK after any code change so the
 submitted binary contains the current code (e.g. the notification deep-link in

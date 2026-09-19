@@ -54,7 +54,10 @@ roadmap) is in [`docs/scope.md`](docs/scope.md).
 
 ## Design
 
-Dark terminal / ticker aesthetic reused from [usepulse-two.vercel.app](https://usepulse-two.vercel.app)
+Dark terminal / ticker aesthetic — matching the wider Pulse web vision. Pulse
+Pocket is the sliced-down, mobile, wallet-native build of that vision: one
+real subsystem ("Narrative Radar") shipped as a working phone app, with the
+rest of the platform stated as roadmap.
 
 ## Getting Started
 
@@ -70,6 +73,22 @@ pnpm install
 pnpm prebuild
 pnpm android
 ```
+
+## Building the submission APK
+
+The judge-facing APK is the **production** EAS profile (internal distribution,
+so it installs directly; production environment; embeds `channel: production`
+for OTA updates):
+
+```bash
+pnpm build:prod        # eas build --profile production --platform android
+```
+
+- Development client (`pnpm build:dev`) and preview builds can **not** receive
+  OTA updates — only production embeds the updates channel.
+- After installing the production APK once, future JS changes ship over the
+  air with `eas update --channel production --auto`.
+- Native changes (new module / SDK bump) still require a fresh build.
 
 ## Project Structure
 
