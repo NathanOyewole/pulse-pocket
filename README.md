@@ -108,6 +108,45 @@ Notes:
 - APKs built before `expo-updates` was added can't receive updates; reinstall
   once with a current production build.
 
+## Reliability & fallbacks (honest limits)
+
+Pulse Pocket degrades gracefully — nothing fakes a feature it can't run.
+
+- **Background alerts are best-effort, not real-time.** Android WorkManager has a
+  ~15-minute minimum interval (iOS is OS-opportunistic). In-app narrative
+  notifications fire instantly while the app is open; fully-killed background
+  alerts are the ~15-min floor cadence. Remote push is roadmap, not shipped.
+- **Every API key is optional.** DexScreener needs no key. Missing/unset keys
+  (Birdeye, Helius, OpenRouter, Jupiter) only hide the features that need them —
+  risk badge, attention fact-lines, narrative freshness, swap — and never break
+  the feed cycle. Narratives fall back to a *labeled* template when the LLM
+  quota is exhausted; the app never fabricates a story.
+- **SKR / wallet absence is handled.** No wallet connected → the app runs fully
+  as a read-only radar (watch, screen, alert). Connected wallet with no `.skr`
+  domain → `resolveSkrDomain` returns `null` and a truncated address is shown.
+  The SEEKER badge appears only on real Seeker hardware.
+- **Swap failure cases** (quote timeout, slippage exceeded, RPC error) surface an
+  inline error on the card; the feed and detection keep running untouched.
+
+## Feature → code map (for reviewers)
+
+| Claimed feature | Where it lives |
+|---|---|
+| 90s pulse loop + spike detector | `app/index.tsx`, `lib/spikeDetector.ts` |
+| Watchlist + boost-token discovery | `lib/watchlist.ts`, `lib/dexscreener.ts` |
+| On-chain rug-screen (Birdeye) | `lib/risks.ts` |
+| Attention proxy (boost velocity + buy/sell pressure) | `lib/attention.ts` |
+| LLM narrative (OpenRouter, 5 rotating models) | `lib/openrouter.ts`, `lib/pipeline.ts` |
+| Feed persistence | `lib/feedStorage.ts` |
+| Native background alert task | `lib/backgroundSpikes.ts`, `lib/spikeAlerts.ts`, `lib/notifications.ts` |
+| Tap-alert deep link (cold + warm start) | `app/_layout.tsx`, `app/pair/[address].tsx` |
+| MWA wallet connect | `lib/wallet.ts`, `hooks/useWallet.tsx` |
+| One-tap Jupiter swap | `lib/jupiter.ts` (used from `app/pair/[address].tsx`, `app/settings.tsx`) |
+| **SKR (`.skr`) identity resolution** (AllDomains/`@onsol/tldparser`) | `lib/skrDomain.ts` + `lib/__tests__/skrDomain.test.ts` |
+| Seeker hardware detection | `lib/seeker.ts` |
+| OTA updates (expo-updates + EAS Update) | `hooks/useAppUpdates.tsx`, `components/UpdateBanner.tsx`, `eas.json` |
+| Unit tests | `lib/__tests__/` |
+
 ## Project structure
 
 ```
