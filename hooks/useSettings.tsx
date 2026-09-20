@@ -10,6 +10,7 @@ import {
 import {
   DEFAULT_SWAP_AMOUNT_SOL,
   loadSettings,
+  saveDailyDigest,
   saveNotificationsEnabled,
   saveSwapAmount,
   type AppSettings,
@@ -23,6 +24,7 @@ import {
 interface SettingsContextValue extends AppSettings {
   setSwapAmountSol: (amount: number) => Promise<void>;
   setNotificationsEnabled: (enabled: boolean) => Promise<void>;
+  setDailyDigest: (enabled: boolean) => Promise<void>;
 }
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
@@ -30,11 +32,13 @@ const SettingsContext = createContext<SettingsContextValue | null>(null);
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [swapAmountSol, setSwapAmount] = useState(DEFAULT_SWAP_AMOUNT_SOL);
   const [notificationsEnabled, setNotifs] = useState(true);
+  const [dailyDigest, setDaily] = useState(true);
 
   useEffect(() => {
     loadSettings().then((s) => {
       setSwapAmount(s.swapAmountSol);
       setNotifs(s.notificationsEnabled);
+      setDaily(s.dailyDigest);
     });
   }, []);
 
@@ -61,14 +65,28 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     await saveNotificationsEnabled(enabled);
   }, []);
 
+  const setDailyDigest = useCallback(async (enabled: boolean) => {
+    setDaily(enabled);
+    await saveDailyDigest(enabled);
+  }, []);
+
   const value = useMemo(
     () => ({
       swapAmountSol,
       notificationsEnabled,
+      dailyDigest,
       setSwapAmountSol,
       setNotificationsEnabled,
+      setDailyDigest,
     }),
-    [swapAmountSol, notificationsEnabled, setSwapAmountSol, setNotificationsEnabled]
+    [
+      swapAmountSol,
+      notificationsEnabled,
+      dailyDigest,
+      setSwapAmountSol,
+      setNotificationsEnabled,
+      setDailyDigest,
+    ]
   );
 
   return (

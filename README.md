@@ -38,7 +38,9 @@ Install notes:
 7. Alerts via a native background task — real notifications with the app
    killed; tapping one deep-links straight into that token
 8. One-tap wallet connect (Mobile Wallet Adapter) + Jupiter swap from the card
-9. OTA updates — new versions apply over the air (expo-updates + EAS Update)
+ 9. OTA updates — new versions apply over the air (expo-updates + EAS Update)
+10. A once-a-day "what moved since midnight" digest for your watchlist — the
+    day's strongest overnight movers as a dismissible card on the feed
 
 Everything runs on-device: feed, caches, and settings live in AsyncStorage.
 No backend, nothing to stand up.
@@ -61,12 +63,12 @@ roadmap, not built or claimed.
 | AI | OpenRouter |
 | Notifications | Expo Notifications + TaskManager/BackgroundFetch (alerts with the app killed) |
 | Updates | expo-updates + EAS Update — OTA JS updates on installed APKs (native changes need a fresh build) |
-| State | React context + AsyncStorage (feed, snapshot/risk/boost caches, notified-alert map, settings) |
+| State | React context + AsyncStorage (feed, snapshot/risk/boost caches, notified-alert map, movers log, settings) |
 
 ## Testing
 
 ```bash
-pnpm test            # vitest — spike detector, attention-proxy deltas, alert dedupe/cap
+pnpm test            # vitest — spike detector, attention-proxy deltas, alert dedupe/cap, digest
 pnpm lint            # eslint
 pnpm exec tsc --noEmit
 ```
@@ -138,6 +140,7 @@ Pulse Pocket degrades gracefully — nothing fakes a feature it can't run.
 | Attention proxy (boost velocity + buy/sell pressure) | `lib/attention.ts` |
 | LLM narrative (OpenRouter, 5 rotating models) | `lib/openrouter.ts`, `lib/pipeline.ts` |
 | Feed persistence | `lib/feedStorage.ts` |
+| Daily watchlist digest | `lib/digest.ts`, `components/DigestCard.tsx` |
 | Native background alert task | `lib/backgroundSpikes.ts`, `lib/spikeAlerts.ts`, `lib/notifications.ts` |
 | Tap-alert deep link (cold + warm start) | `app/_layout.tsx`, `app/pair/[address].tsx` |
 | MWA wallet connect | `lib/wallet.ts`, `hooks/useWallet.tsx` |

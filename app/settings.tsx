@@ -120,6 +120,21 @@ export default function SettingsScreen() {
           />
         </View>
 
+        <View style={[styles.row, { marginTop: spacing.md }]}>
+          <View style={{ flex: 1, paddingRight: spacing.md }}>
+            <Text style={styles.rowTitle}>Daily digest</Text>
+            <Text style={styles.hint}>
+              A once-a-day "what moved since midnight" summary on your feed.
+            </Text>
+          </View>
+          <Switch
+            value={settings.dailyDigest}
+            onValueChange={settings.setDailyDigest}
+            trackColor={{ false: colors.border, true: colors.accentDim }}
+            thumbColor={settings.dailyDigest ? colors.accent : colors.text.tertiary}
+          />
+        </View>
+
         <Text style={[styles.section, { marginTop: spacing.xl }]}>UPDATES</Text>
         <View style={styles.row}>
           <View style={{ flex: 1, paddingRight: spacing.md }}>

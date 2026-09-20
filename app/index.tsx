@@ -18,6 +18,13 @@ import { useSettings } from "../hooks/useSettings";
 import { useAutoClearError } from "../hooks/useAutoClearError";
 import { NarrativeCard } from "../components/NarrativeCard";
 import { UpdateBanner } from "../components/UpdateBanner";
+import { DigestCard } from "../components/DigestCard";
+import {
+  getTodayDigest,
+  dismissDigest,
+  recordNarratives,
+  type Digest,
+} from "../lib/digest";
 import { hasSeenWelcome } from "../lib/onboarding";
 import { notifyNarrative } from "../lib/notifications";
 import { friendlyError } from "../lib/errors";
@@ -36,10 +43,14 @@ export default function HomeScreen() {
   const [emptyHint, setEmptyHint] = useState<string | null>(null);
   const [lastRun, setLastRun] = useState<number | null>(null);
   const [errorResetKey, setErrorResetKey] = useState(0);
+  const [digest, setDigest] = useState<Digest | null>(null);
   const wallet = useWallet();
-  const { notificationsEnabled } = useSettings();
+  const { notificationsEnabled, dailyDigest } = useSettings();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isFirstCycleRef = useRef(true);
+  // Skip re-setting the digest when the recomputed one is identical, so the
+  // 90s poll never churns a stable card.
+  const digestKeyRef = useRef<string | null>(null);
   // Mirrors `narratives` so the polling interval's closure never reads stale
   // state when computing the next feed.
   const narrativesRef = useRef<Narrative[]>([]);
@@ -58,6 +69,26 @@ export default function HomeScreen() {
 
   const clearFeedError = useCallback(() => setError(null), []);
   useAutoClearError(!!error, clearFeedError);
+
+  // Re-reads today's digest (if enabled) and only touches state when the
+  // computed digest actually differs from what's on screen — keeps the 90s
+  // poll from re-rendering a stable card.
+  const refreshDigest = useCallback(async () => {
+    if (!dailyDigest) return;
+    const d = await getTodayDigest().catch(() => null);
+    const key = d
+      ? `${d.day}|${d.movers.map((m) => m.pairAddress).join(",")}`
+      : "none";
+    if (key !== digestKeyRef.current) {
+      digestKeyRef.current = key;
+      setDigest(d);
+    }
+  }, [dailyDigest]);
+
+  const handleDismissDigest = useCallback(() => {
+    setDigest(null);
+    dismissDigest().catch(() => {});
+  }, []);
 
   useEffect(() => {
     hasSeenWelcome().then((seen) => {
@@ -98,6 +129,10 @@ export default function HomeScreen() {
 
         setNarratives(next);
         saveFeed(next).catch(() => {});
+        // New spikes feed the once-a-day digest ("what moved since midnight"),
+        // so record them and re-check whether a digest is now due.
+        recordNarratives(results).catch(() => {});
+        if (results.length > 0) refreshDigest();
         setLastRun(Date.now());
         setEmptyHint(
           next.length === 0
@@ -111,11 +146,12 @@ export default function HomeScreen() {
         setRefreshing(false);
       }
     },
-    [notificationsEnabled]
+    [notificationsEnabled, refreshDigest]
   );
 
   useEffect(() => {
     if (checkingOnboarding) return;
+    refreshDigest();
     runCycle();
     pollRef.current = setInterval(() => runCycle(), POLL_INTERVAL_MS);
     return () => {
@@ -183,6 +219,11 @@ export default function HomeScreen() {
         data={narratives}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.feedContent}
+        ListHeaderComponent={
+          digest ? (
+            <DigestCard digest={digest} onDismiss={handleDismissDigest} />
+          ) : null
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -202,13 +243,31 @@ export default function HomeScreen() {
         ListEmptyComponent={
           <View style={styles.emptyState}>
             {loading ? (
-              <ActivityIndicator color={colors.accent} />
+              <>
+                <ActivityIndicator color={colors.accent} />
+                <Text style={[styles.emptySub, { marginTop: spacing.md }]}>
+                  Listening for momentum…
+                </Text>
+              </>
             ) : (
               <>
-                <Text style={styles.emptyTitle}>No narratives yet</Text>
+                <View style={styles.emptyOrb}>
+                  <View style={styles.emptyOrbCore} />
+                </View>
+                <Text style={styles.emptyTitle}>Radar is live</Text>
                 <Text style={styles.emptyText}>
-                  {emptyHint ?? "Pull down to check for fresh signals."}
+                  {emptyHint ??
+                    "Pull down to check for fresh signals on your watchlist."}
                 </Text>
+                <View style={styles.emptyHow}>
+                  <Text style={styles.emptyHowLine}>
+                    Detect · Understand · Act
+                  </Text>
+                  <Text style={styles.emptyHowSub}>
+                    Spikes are rug-screened on-chain, written into a story, and
+                    alerted natively — even with the app closed.
+                  </Text>
+                </View>
               </>
             )}
           </View>
@@ -316,6 +375,43 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     marginBottom: spacing.sm,
+  },
+  emptySub: {
+    color: colors.text.tertiary,
+    fontSize: 13,
+  },
+  emptyOrb: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.accentMuted,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.md,
+  },
+  emptyOrbCore: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.accent,
+  },
+  emptyHow: {
+    marginTop: spacing.xl,
+    alignItems: "center",
+  },
+  emptyHowLine: {
+    color: colors.text.secondary,
+    fontSize: 12,
+    letterSpacing: 0.5,
+    fontWeight: "600",
+    marginBottom: spacing.xs,
+  },
+  emptyHowSub: {
+    color: colors.text.muted,
+    fontSize: 12,
+    textAlign: "center",
+    lineHeight: 17,
+    maxWidth: 260,
   },
   emptyText: {
     color: colors.text.tertiary,
