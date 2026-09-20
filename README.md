@@ -9,6 +9,20 @@ plain-language narrative, and lets you act on it in one tap.
 
 > Attention precedes liquidity. Narratives move before price does.
 
+## Try it (judges — install in ~30 seconds)
+
+Grab the current build, no build-from-source needed:
+
+- **APK (direct download):** https://github.com/NathanOyewole/pulse-pocket/releases/download/v1.0.0/pulse-pocket.apk
+- Or open the [release page](https://github.com/NathanOyewole/pulse-pocket/releases/tag/v1.0.0) for the same file.
+
+Install on any Android device (Seeker or plain phone): download the APK, tap it, allow installs from unknown sources, and open Pulse Pocket. Pull to refresh to trigger a signal cycle. A **SEEKER** badge shows in the header on real Seeker hardware.
+
+Install notes:
+- Works without any API keys (DexScreener needs none; missing keys hide the risk badge and swap, and narratives fall back to a labeled template).
+- Production build embeds the OTA channel — JS updates reach installed APKs via `eas update --channel production`.
+- Requires a real development build for Mobile Wallet Adapter (`expo run:android`); Expo Go won't do wallet connect.
+
 ## What it does
 
 1. Polls live Solana price/volume data every 90s (DexScreener)
